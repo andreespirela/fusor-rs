@@ -1,12 +1,15 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
-pub const FRAMEWORKS: [(&str, &str); 6] = [
+/// Column order. A report measured under an earlier protocol lacks later
+/// frameworks; their columns are hidden rather than shown as failures.
+pub const FRAMEWORKS: [(&str, &str); 7] = [
     ("fusor", "fusor"),
     ("react", "React"),
     ("svelte", "Svelte"),
     ("solid", "SolidJS"),
     ("vue", "Vue"),
     ("preact", "Preact"),
+    ("leptos", "Leptos"),
 ];
 
 #[derive(Deserialize)]
@@ -59,9 +62,10 @@ pub struct MetricRow {
     pub label: String,
     pub category: String,
     pub unit: &'static str,
-    pub values: [Option<(f64, f64)>; 6],
+    pub values: [Option<(f64, f64)>; 7],
     pub detail: String,
-    pub operations: [Option<String>; 6],
+    pub operations: [Option<String>; 7],
+    pub present: [bool; 7],
 }
 impl MetricRow {
     pub fn display(&self, index: usize, p95: bool) -> String {
@@ -100,17 +104,28 @@ impl Report {
         self.generated_at.get(..10).unwrap_or(&self.generated_at)
     }
     pub fn version(&self, index: usize) -> &str {
-        let key = if index == 3 {
-            "solid-js"
-        } else {
-            FRAMEWORKS[index].0
+        let key = match FRAMEWORKS[index].0 {
+            "solid" => "solid-js",
+            framework => framework,
         };
         self.versions
             .get(key)
             .map(String::as_str)
             .unwrap_or("unknown")
     }
+    /// Whether this report measured the framework in column `index`.
+    pub fn includes(&self, index: usize) -> bool {
+        self.results
+            .iter()
+            .any(|result| result.framework == FRAMEWORKS[index].0)
+    }
+    pub fn framework_count(&self) -> usize {
+        (0..FRAMEWORKS.len())
+            .filter(|index| self.includes(*index))
+            .count()
+    }
     pub fn rows(&self, category: &str) -> Vec<MetricRow> {
+        let present = std::array::from_fn(|index| self.includes(index));
         let mut rows: Vec<MetricRow> = vec![];
         for result in &self.results {
             if category != "all" && category != result.category {
@@ -130,9 +145,10 @@ impl Report {
                     label: result.label.clone(),
                     category: result.category.clone(),
                     unit: "ms",
-                    values: [None; 6],
+                    values: [None; 7],
                     detail: String::new(),
                     operations: std::array::from_fn(|_| None),
+                    present,
                 });
                 rows.last_mut().unwrap()
             };
@@ -159,8 +175,9 @@ impl Report {
                 };
                 let mut row = MetricRow {
                     id: format!("bundle-{fixture}"), label: format!("{name} · gzip"),
-                    category: "bundles".into(), unit: "KiB", values: [None; 6],
+                    category: "bundles".into(), unit: "KiB", values: [None; 7],
                     operations: std::array::from_fn(|_| None),
+                    present,
                     detail: "Sum of separately gzipped HTML, JavaScript, and Wasm files. No CDN or shared warm cache.".into(),
                 };
                 for bundle in self

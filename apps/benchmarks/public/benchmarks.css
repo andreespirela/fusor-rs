@@ -236,7 +236,7 @@ a:focus-visible {
   display: table;
 }
 .results {
-  min-width: 970px;
+  min-width: 1080px;
 }
 .results caption,
 .memory-table caption {
@@ -716,7 +716,7 @@ footer {
 }
 @media (max-width: 700px) {
   .results {
-    min-width: 920px;
+    min-width: 1040px;
   }
   .results thead th:first-child {
     width: 180px;

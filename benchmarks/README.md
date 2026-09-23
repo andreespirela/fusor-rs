@@ -1,6 +1,8 @@
 # Benchmarks
 
-Production applications compare fusor, React, Svelte, Solid, Vue and Preact.
+Production applications compare fusor, React, Svelte, Solid, Vue, Preact and
+Leptos. Leptos builds in its own Cargo workspace under `workloads/leptos/`, so
+it does not change fusor's dependencies, manifests or MSRV.
 Read [the methodology](METHODOLOGY.md) before interpreting results. Performance
 thresholds are not CI assertions; correctness and evidence integrity are.
 
@@ -11,7 +13,7 @@ thresholds are not CI assertions; correctness and evidence integrity are.
 | `workloads/` | Equivalent applications and their production build inputs |
 | `harness/` | Timing boundaries, correctness checks, memory, bundles and SSR |
 | `tools/` | Shared recording, comparison, verification, diagnostics and publishing |
-| `schemas/` | Versioned experiment, index and research-note formats |
+| `schemas/` | Versioned experiment, index and research-note formats, and the full-protocol registry |
 | `results/history/<id>/` | JSON record plus its raw JSON evidence; no scripts or binaries |
 | `results/index.json` | History catalog and explicit published-report pointer |
 | `target/benchmarks/` (repository root) | Disposable exports, logs and profiling output |
@@ -108,6 +110,15 @@ After an interrupted process, inspect `.cache/benchmarks/cli.lock/owner.json` an
 remove that lock directory only when its process is no longer running.
 
 ## Contributing
+
+Full reports declare their protocol (`schemas/full-protocol.json`). The
+six-framework `20260922-baseline` report is schema 1 without a `protocol` field
+and stays valid under `six-framework-v1`. That protocol closed at
+`2026-09-23T00:00:00Z`: a report generated later must be schema 2, declare
+`seven-framework-v2`, and contain all seven frameworks' metrics, memory and
+bundles to be recorded as full. A subset run remains a screen/smoke report.
+Adding a framework means adding a new protocol version and closing the current one,
+never editing a recorded report.
 
 Change shared tools here; never add a script inside an experiment. Keep run
 records data-only. Extend schemas deliberately when adding fields or protocols.

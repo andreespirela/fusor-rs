@@ -1,86 +1,202 @@
 {
-  "schemaVersion": 1,
-  "id": "six-framework-v1",
-  "frameworks": ["fusor", "react", "svelte", "solid", "vue", "preact"],
-  "samples": 15,
-  "warmups": 3,
-  "metrics": [
+  "schemaVersion": 2,
+  "current": "seven-framework-v2",
+  "protocols": [
     {
-      "id": "ssr-1000",
-      "unit": "ms"
+      "id": "six-framework-v1",
+      "reportSchema": 1,
+      "acceptedBefore": "2026-09-23T00:00:00.000Z",
+      "frameworks": [
+        "fusor",
+        "react",
+        "svelte",
+        "solid",
+        "vue",
+        "preact"
+      ],
+      "samples": 15,
+      "warmups": 3,
+      "metrics": [
+        {
+          "id": "ssr-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "ssr-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "initial-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "initial-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "single",
+          "unit": "ms"
+        },
+        {
+          "id": "bulk-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "bulk-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "insert",
+          "unit": "ms"
+        },
+        {
+          "id": "delete",
+          "unit": "ms"
+        },
+        {
+          "id": "swap",
+          "unit": "ms"
+        },
+        {
+          "id": "computed",
+          "unit": "ms"
+        },
+        {
+          "id": "fanout-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "fanout-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "fanin",
+          "unit": "ms"
+        },
+        {
+          "id": "unmount",
+          "unit": "ms"
+        },
+        {
+          "id": "events",
+          "unit": "ms"
+        },
+        {
+          "id": "hydration-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "hydration-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "startup",
+          "unit": "ms"
+        }
+      ],
+      "fixtures": [
+        "benchmark workload",
+        "hello",
+        "todo"
+      ]
     },
     {
-      "id": "ssr-10000",
-      "unit": "ms"
-    },
-    {
-      "id": "initial-1000",
-      "unit": "ms"
-    },
-    {
-      "id": "initial-10000",
-      "unit": "ms"
-    },
-    {
-      "id": "single",
-      "unit": "ms"
-    },
-    {
-      "id": "bulk-1000",
-      "unit": "ms"
-    },
-    {
-      "id": "bulk-10000",
-      "unit": "ms"
-    },
-    {
-      "id": "insert",
-      "unit": "ms"
-    },
-    {
-      "id": "delete",
-      "unit": "ms"
-    },
-    {
-      "id": "swap",
-      "unit": "ms"
-    },
-    {
-      "id": "computed",
-      "unit": "ms"
-    },
-    {
-      "id": "fanout-1000",
-      "unit": "ms"
-    },
-    {
-      "id": "fanout-10000",
-      "unit": "ms"
-    },
-    {
-      "id": "fanin",
-      "unit": "ms"
-    },
-    {
-      "id": "unmount",
-      "unit": "ms"
-    },
-    {
-      "id": "events",
-      "unit": "ms"
-    },
-    {
-      "id": "hydration-1000",
-      "unit": "ms"
-    },
-    {
-      "id": "hydration-10000",
-      "unit": "ms"
-    },
-    {
-      "id": "startup",
-      "unit": "ms"
+      "id": "seven-framework-v2",
+      "reportSchema": 2,
+      "frameworks": [
+        "fusor",
+        "react",
+        "svelte",
+        "solid",
+        "vue",
+        "preact",
+        "leptos"
+      ],
+      "samples": 15,
+      "warmups": 3,
+      "metrics": [
+        {
+          "id": "ssr-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "ssr-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "initial-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "initial-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "single",
+          "unit": "ms"
+        },
+        {
+          "id": "bulk-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "bulk-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "insert",
+          "unit": "ms"
+        },
+        {
+          "id": "delete",
+          "unit": "ms"
+        },
+        {
+          "id": "swap",
+          "unit": "ms"
+        },
+        {
+          "id": "computed",
+          "unit": "ms"
+        },
+        {
+          "id": "fanout-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "fanout-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "fanin",
+          "unit": "ms"
+        },
+        {
+          "id": "unmount",
+          "unit": "ms"
+        },
+        {
+          "id": "events",
+          "unit": "ms"
+        },
+        {
+          "id": "hydration-1000",
+          "unit": "ms"
+        },
+        {
+          "id": "hydration-10000",
+          "unit": "ms"
+        },
+        {
+          "id": "startup",
+          "unit": "ms"
+        }
+      ],
+      "fixtures": [
+        "benchmark workload",
+        "hello",
+        "todo"
+      ]
     }
-  ],
-  "fixtures": ["benchmark workload", "hello", "todo"]
+  ]
 }

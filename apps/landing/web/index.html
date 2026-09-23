@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#faf9f6" />
     <meta
       name="description"
-      content="fusor is a framework for building reactive web interfaces with HTML templates, native Rust modules, and direct DOM updates."
+      content="Build reactive web apps with Rust. Write your UI in HTML files and keep state and frontend logic in Rust, with no markup inside Rust macros."
     />
     <meta property="og:title" content="fusor — A framework for Rust and HTML" />
     <meta
       property="og:description"
-      content="Write components in HTML and Rust. Compile to WebAssembly. Update the DOM with signals."
+      content="Write your UI in HTML files. Keep state and frontend logic in Rust. No markup inside Rust macros."
     />
     <meta property="og:type" content="website" />
     <title>fusor — A framework for Rust and HTML</title>
@@ -36,13 +36,10 @@
         </header>
         <main id="main" class="page-width">
           <section class="intro" aria-labelledby="intro-title">
-            <p class="project-status">
-              <span class="status-dot" aria-hidden="true"></span>v0.1 · In development
-            </p>
-            <h1 id="intro-title">Build web interfaces<br />with <span>Rust and HTML.</span></h1>
+            <h1 id="intro-title">Build reactive web apps<br />with <span>Rust.</span></h1>
             <p class="intro-description">
-              fusor is a reactive framework for the web. Write HTML templates and native Rust
-              modules. Compile to WebAssembly, with signals that update the DOM directly.
+              Write your UI in HTML files. Keep state and frontend logic in Rust. No markup inside
+              Rust macros.
             </p>
             <div class="intro-links">
               <a class="primary-link" href="/docs/installation"
@@ -55,12 +52,18 @@
           </section>
           <section class="example" aria-labelledby="example-title">
             <div class="section-heading">
-              <h2 id="example-title">Try an example.</h2>
+              <h2 id="example-title">Each example is a component: an HTML template and a Rust module.</h2>
               <a href="{{ state.example.get().guide() }}"
                 >Read the guide <span aria-hidden="true">↗</span></a
               >
             </div>
             <div class="example-switcher" role="group" aria-label="Choose an example">
+              <button
+                aria-pressed="{{ state.example.get() == Example::Counter }}"
+                on:click="state.select(Example::Counter)"
+              >
+                Counter
+              </button>
               <button
                 aria-pressed="{{ state.example.get() == Example::Search }}"
                 on:click="state.select(Example::Search)"
@@ -79,12 +82,6 @@
               >
                 Async data
               </button>
-              <button
-                aria-pressed="{{ state.example.get() == Example::Counter }}"
-                on:click="state.select(Example::Counter)"
-              >
-                Counter
-              </button>
             </div>
             <p class="example-description">{{ state.example.get().description() }}</p>
             <div class="example-workspace">
@@ -94,36 +91,64 @@
                 </div>
                 <div class="example-result">
                   <Match value="{{ state.example.get() }}">
-                    <Case pattern="Example::Search"><LiveSearch></LiveSearch></Case>
-                    <Case pattern="Example::KeyedList"><KeyedList></KeyedList></Case>
-                    <Case pattern="Example::AsyncData"><AsyncData></AsyncData></Case>
-                    <Case pattern="Example::Counter"
-                      ><div class="counter-example">
+                    <Case pattern="Example::Counter">
+                      <div class="counter-example">
                         <Counter></Counter>
-                        <p>One signal. One text node.<br />Click to update it.</p>
-                      </div></Case
-                    >
+                        <p>Each button calls a method<br />defined in counter.rs.</p>
+                      </div>
+                    </Case>
+                    <Case pattern="Example::Search">
+                      <LiveSearch></LiveSearch>
+                    </Case>
+                    <Case pattern="Example::KeyedList">
+                      <KeyedList></KeyedList>
+                    </Case>
+                    <Case pattern="Example::AsyncData">
+                      <AsyncData></AsyncData>
+                    </Case>
                   </Match>
                 </div>
               </div>
               <div class="source-panel">
-                <div class="source-tabs" role="group" aria-label="Component source">
-                  <button
-                    type="button"
-                    aria-pressed="{{ !state.show_rust.get() }}"
-                    on:click="state.show_rust.set(false)"
-                  >
-                    <span class="file-symbol html-symbol" aria-hidden="true">&lt;&gt;</span>{{
-                    state.example.get().source(false).name }}
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed="{{ state.show_rust.get() }}"
-                    on:click="state.show_rust.set(true)"
-                  >
-                    <span class="file-symbol" aria-hidden="true">rs</span>{{
-                    state.example.get().source(true).name }}
-                  </button>
+                <div class="source-tabs">
+                  <div class="source-group" role="group" aria-label="Component files">
+                    <span class="source-group-label" aria-hidden="true">Component</span>
+                    <button
+                      type="button"
+                      aria-pressed="{{ state.shows(false, false) }}"
+                      on:click="state.show_file(false, false)"
+                    >
+                      <span class="file-symbol html-symbol" aria-hidden="true">&lt;&gt;</span>{{
+                      state.file(false, false).name }}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed="{{ state.shows(false, true) }}"
+                      on:click="state.show_file(false, true)"
+                    >
+                      <span class="file-symbol" aria-hidden="true">rs</span>{{
+                      state.file(false, true).name }}
+                    </button>
+                  </div>
+                  <div class="source-group" role="group" aria-label="Page files">
+                    <span class="source-group-label" aria-hidden="true">Page</span>
+                    <button
+                      type="button"
+                      aria-pressed="{{ state.shows(true, false) }}"
+                      on:click="state.show_file(true, false)"
+                    >
+                      <span class="file-symbol html-symbol" aria-hidden="true">&lt;&gt;</span>{{
+                      state.file(true, false).name }}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed="{{ state.shows(true, true) }}"
+                      on:click="state.show_file(true, true)"
+                    >
+                      <span class="file-symbol" aria-hidden="true">rs</span>{{
+                      state.file(true, true).name }}
+                    </button>
+                  </div>
                   <a
                     href="{{ state.source().href }}"
                     target="_blank"
@@ -133,97 +158,156 @@
                   >
                 </div>
                 <div class="source-content">
-                  <ForEach items="{{ vec![state.source()] }}" key="{{ |file| file.href }}"
-                    ><CodeBlock file="{{ item.clone() }}"></CodeBlock
-                  ></ForEach>
+                  <ForEach items="{{ vec![state.source()] }}" key="{{ |file| file.href }}">
+                    <CodeBlock file="{{ item.clone() }}"></CodeBlock>
+                  </ForEach>
                 </div>
               </div>
             </div>
-            <p class="example-note">
-              These are the actual source files behind this example. The HTML defines the view; the
-              Rust module owns its state.
-            </p>
+            <div class="source-key">
+              <p class="example-note">
+                These are complete source files. The component files define
+                <code class="page-tag">{{ state.example.get().tag() }}</code>; the page files place
+                that tag inside <code>&lt;App&gt;</code>, which starts the app. Four things connect
+                HTML and Rust:
+              </p>
+              <dl>
+                <div>
+                  <dt><code>rust:component</code></dt>
+                  <dd>Names the Rust struct. Its fields and methods are available as state.</dd>
+                </div>
+                <div>
+                  <dt><code>{{ INTERPOLATION }}</code></dt>
+                  <dd>Shows a Rust value as text or an attribute, and updates when the signals it reads change.</dd>
+                </div>
+                <div>
+                  <dt><code>on:click</code> · <code>bind:value</code></dt>
+                  <dd>Runs Rust when an event fires, or keeps an input and a signal in sync.</dd>
+                </div>
+                <div>
+                  <dt><code>template!(…)</code></dt>
+                  <dd>Connects the module to its HTML, so the compiler checks both together.</dd>
+                </div>
+              </dl>
+              <p class="setup-context">
+                <code>fusor new</code> creates <code>Cargo.toml</code>, <code>build.rs</code>, and
+                <code>src/lib.rs</code>; declare the additional component modules in
+                <code>src/lib.rs</code>.
+                <a href="/docs/html-and-rust/app">The App boundary <span aria-hidden="true">→</span></a>
+              </p>
+            </div>
           </section>
           <section class="model-section" aria-labelledby="model-title">
             <div class="section-heading">
               <h2 id="model-title">How it works</h2>
-              <span class="section-note">A few things to know.</span>
+              <span class="section-note">What you write, and what fusor does with it.</span>
             </div>
             <div class="concept-grid">
               <article>
-                <h3>HTML templates, Rust modules</h3>
+                <h3>Markup in HTML files</h3>
                 <p>
-                  Use HTML for markup and CSS for styling. Keep component state in Rust, with
-                  ordinary imports and typed inputs.
+                  Templates are <code>.html</code> files with the elements, classes, labels, and
+                  forms you would write anyway. Style them with CSS. Rust goes in double-brace
+                  bindings and attributes such as <code>on:click</code>.
                 </p>
                 <a href="/docs/html-and-rust"
-                  >Templates and components <span aria-hidden="true">→</span></a
+                  >HTML and Rust <span aria-hidden="true">→</span></a
+                >
+              </article>
+              <article>
+                <h3>Logic in Rust modules</h3>
+                <p>
+                  State is a Rust struct and behavior is its methods, with ordinary imports and
+                  types. The compiler checks every expression in your templates against that code.
+                </p>
+                <a href="/docs/components"
+                  >Reusable components <span aria-hidden="true">→</span></a
                 >
               </article>
               <article>
                 <h3>Fine-grained updates</h3>
                 <p>
-                  Signals track the bindings that read them. Changing a value updates the affected
-                  DOM nodes, with no virtual DOM reconciliation.
+                  Your Rust compiles to WebAssembly and runs in the browser. Each binding tracks the
+                  signals it reads. When a signal changes, the bindings that read it run again; the
+                  rest of the component does not re-render.
                 </p>
                 <a href="/docs/reactivity"
                   >Signals and derived state <span aria-hidden="true">→</span></a
                 >
               </article>
               <article>
-                <h3>Owned work and cleanup</h3>
+                <h3>Owned cleanup and async</h3>
                 <p>
-                  Effects, listeners, and async work belong to an owner. Disposing a component
-                  cleans up the work it owns.
+                  Listeners, effects, and requests belong to the component that started them and
+                  stop when it is removed. <code>&lt;Async&gt;</code> can keep the previous view
+                  until related data is ready.
                 </p>
-                <a href="/docs/ownership">Owners and lifetimes <span aria-hidden="true">→</span></a>
-              </article>
-              <article>
-                <h3>Coherent async views</h3>
-                <p>
-                  An async boundary can keep the previous view visible until related reads are
-                  ready, then publish their results together.
-                </p>
-                <a href="/docs/coherent-async"
-                  >Async boundaries <span aria-hidden="true">→</span></a
-                >
+                <a href="/docs/ownership">Owners and cleanup <span aria-hidden="true">→</span></a>
               </article>
             </div>
           </section>
           <section class="getting-started" aria-labelledby="start-title">
-            <div>
+            <div class="getting-started-heading">
               <h2 id="start-title">Try fusor</h2>
-              <p>
-                The framework is in early development and its crates are not published yet. From a
-                <a href="https://github.com/andreespirela/fusor-rs">repository checkout</a>,
-                install the CLI:
-              </p>
-              <div class="install-command">
-                <code>cargo install --path crates/fusor-cli --locked</code
-                ><button type="button" on:click="state.copy_install()" aria-live="polite">
-                  {{ state.copy_label.get() }}
-                </button>
-              </div>
-              <p class="setup-link">
-                Then follow the <a href="/docs/installation">installation guide</a> to create and
-                run an app.
-              </p>
+              <p>Install the CLI and create an app. The starter includes a component to edit in HTML and Rust.</p>
+            </div>
+            <ol class="setup-steps" role="list">
+              <li class="setup-step">
+                <h3><span class="step-number" aria-hidden="true">01</span>Install the CLI</h3>
+                <div class="install-panel">
+                  <div class="install-toolbar">
+                    <div class="install-platforms" role="group" aria-label="Installation platform">
+                      <button
+                        type="button"
+                        aria-pressed="{{ !state.install_windows.get() }}"
+                        on:click="state.select_install(false)"
+                      >macOS / Linux</button>
+                      <button
+                        type="button"
+                        aria-pressed="{{ state.install_windows.get() }}"
+                        on:click="state.select_install(true)"
+                      >Windows</button>
+                    </div>
+                    <button
+                      class="copy-install"
+                      type="button"
+                      on:click="state.copy_install()"
+                      aria-live="polite"
+                    >{{ state.copy_label.get() }}</button>
+                  </div>
+                  <div class="install-command"><code>{{ state.install_command() }}</code></div>
+                </div>
+                <p class="setup-note">{{ state.install_note() }}</p>
+              </li>
+              <li class="setup-step">
+                <h3><span class="step-number" aria-hidden="true">02</span>Create your app</h3>
+                <pre class="create-command" tabindex="0" aria-label="Create and run an application"><code>fusor new my-app
+cd my-app
+fusor dev</code></pre>
+                <p class="setup-note">Open the local URL printed in your terminal.</p>
+              </li>
+            </ol>
+            <div class="setup-footer">
+              <p>Building apps requires <a href="https://rustup.rs/">Rust 1.85 or newer</a>.</p>
+              <a class="setup-guide" href="/docs/installation"
+                >Read the installation guide <span aria-hidden="true">→</span></a
+              >
             </div>
             <aside class="further-reading" aria-label="Further reading">
-              <h3>Explore the project</h3>
-              <a href="/docs/showcase">Working examples <span aria-hidden="true">↗</span></a>
-              <a href="/docs/tooling">CLI and editor tooling <span aria-hidden="true">↗</span></a>
-              <a href="/benchmarks/"
-                >Benchmarks &amp; methodology <span aria-hidden="true">↗</span></a
-              >
-              <a href="https://github.com/andreespirela/fusor-rs"
-                >Source &amp; contributions <span aria-hidden="true">↗</span></a
-              >
+              <h3>Keep exploring</h3>
+              <div class="further-reading-links">
+                <a href="/docs/showcase">Working examples <span aria-hidden="true">↗</span></a>
+                <a href="/docs/tooling">CLI &amp; editor tooling <span aria-hidden="true">↗</span></a>
+                <a href="/benchmarks/">Benchmarks <span aria-hidden="true">↗</span></a>
+                <a href="https://github.com/andreespirela/fusor-rs"
+                  >Source &amp; contributions <span aria-hidden="true">↗</span></a
+                >
+              </div>
             </aside>
           </section>
         </main>
         <footer class="site-footer page-width">
-          <p>fusor <span>·</span> Open source, MIT / Apache-2.0</p>
+          <p>fusor <span>·</span> Open source, MIT</p>
           <a href="https://github.com/andreespirela/fusor-rs"
             >Built with fusor <span aria-hidden="true">↗</span></a
           >

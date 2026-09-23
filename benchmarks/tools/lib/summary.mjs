@@ -1,5 +1,5 @@
-import protocol from "../../schemas/full-protocol.json" with { type: "json" };
 import { validateReport } from "./storage.mjs";
+import { protocolOf } from "./protocol.mjs";
 
 // Matches the results site: the browser clock cannot resolve shorter operations.
 const time = (ms) => (ms < 0.1 ? "<0.10" : ms.toFixed(2));
@@ -7,6 +7,8 @@ const kib = (bytes) => (bytes / 1024).toFixed(1);
 
 export function summarize(report) {
   validateReport(report);
+  // Columns follow the protocol the report was measured under.
+  const protocol = protocolOf(report);
   const frameworks = protocol.frameworks.filter((name) =>
     report.results.some((row) => row.framework === name),
   );

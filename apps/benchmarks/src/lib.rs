@@ -22,7 +22,8 @@ impl App {
                         .map_err(|error| format!("{error:?}"))?;
                     let report: Report =
                         serde_json::from_str(&text).map_err(|error| error.to_string())?;
-                    if report.schema != 1 {
+                    // 1: the six-framework protocol; 2: versioned protocols.
+                    if !matches!(report.schema, 1 | 2) {
                         return Err("Unsupported report version".into());
                     }
                     Ok(report)
@@ -57,6 +58,9 @@ impl Row {
     }
     fn best(&self, index: usize) -> bool {
         self.item.get().best(index, self.percentile.get())
+    }
+    fn present(&self, index: usize) -> bool {
+        self.item.with(|row| row.present[index])
     }
 }
 struct Memory {

@@ -4,32 +4,61 @@ mod highlight;
 use std::{env, fmt::Write, fs, path::Path};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Serve the canonical installers as ordinary static assets at the site root.
+    for name in ["install.sh", "install.ps1"] {
+        let source = Path::new("../..").join(name);
+        let destination = Path::new("public").join(name);
+        println!("cargo:rerun-if-changed={}", source.display());
+        // Also regenerate files missing from a checkout that reuses target/.
+        println!("cargo:rerun-if-changed={}", destination.display());
+        let contents = fs::read(source)?;
+        if fs::read(&destination).ok().as_ref() != Some(&contents) {
+            fs::write(destination, contents)?;
+        }
+    }
+
     println!("cargo:rerun-if-changed=build/highlight.rs");
     let highlighter = highlight::Highlighter::new();
     let mut generated = String::new();
+    let mut files = Vec::new();
     for example in ["counter", "search", "keyed_list", "async_data"] {
         for (language, source) in [
             ("rs", format!("src/{example}.rs")),
             ("html", format!("web/components/{example}.html")),
         ] {
-            println!("cargo:rerun-if-changed={source}");
-            let code = fs::read_to_string(&source)?;
-            let name = format!("{example}.{language}");
-            let href = format!("./source/{source}.txt");
-            let tokens = highlighter.tokens(&code, language)?;
             let constant = format!("{}_{}", example.to_uppercase(), language.to_uppercase());
-            writeln!(
-                generated,
-                "pub static {constant}: CodeFile = CodeFile {{ name: {name:?}, href: {href:?}, tokens: {tokens} }};"
-            )?;
+            files.push((constant, format!("{example}.{language}"), language, source));
+        }
+    }
+    // The page that hosts the examples is displayed, not compiled into this app.
+    files.push((
+        "HOST_HTML".into(),
+        "index.html".into(),
+        "html",
+        "host/web/index.html".into(),
+    ));
+    files.push((
+        "HOST_RS".into(),
+        "app.rs".into(),
+        "rs",
+        "host/src/app.rs".into(),
+    ));
+    for (constant, name, language, source) in files {
+        println!("cargo:rerun-if-changed={source}");
+        let code = fs::read_to_string(&source)?;
+        let href = format!("./source/{source}.txt");
+        let tokens = highlighter.tokens(&code, language)?;
+        writeln!(
+            generated,
+            "pub static {constant}: CodeFile = CodeFile {{ name: {name:?}, href: {href:?}, tokens: {tokens} }};"
+        )?;
 
-            let destination = Path::new("public/source").join(format!("{source}.txt"));
-            // Watched too: a fresh checkout with a cached target/ lacks the copy.
-            println!("cargo:rerun-if-changed={}", destination.display());
-            fs::create_dir_all(destination.parent().unwrap())?;
-            if fs::read_to_string(&destination).ok().as_deref() != Some(&code) {
-                fs::write(destination, &code)?;
-            }
+        let destination = Path::new("public/source").join(format!("{source}.txt"));
+        // Watched too: a fresh checkout with a cached target/ lacks the copy.
+        println!("cargo:rerun-if-changed={}", destination.display());
+        fs::create_dir_all(destination.parent().unwrap())?;
+        if fs::read_to_string(&destination).ok().as_deref() != Some(&code) {
+            fs::write(destination, &code)?;
         }
     }
     fs::write(

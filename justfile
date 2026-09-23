@@ -160,7 +160,7 @@ ci-docker command="just setup-browser && just ci-browser":
         -v fusor-ci-cargo:/usr/local/cargo/registry -v fusor-ci-target:/work/target \
         fusor-ci xvfb-run --auto-servernum bash -c 'tar -x && {{command}}'
 
-# Build the six benchmark workloads. Set FUSOR_WASM_OPT to use Binaryen.
+# Build the seven benchmark workloads. Set FUSOR_WASM_OPT to use Binaryen.
 [group('benchmarks')]
 bench-build:
     node benchmarks/build-all.mjs

@@ -113,7 +113,8 @@ try {
       const guide = guides.find((page) => page.slug === "async-data");
       const manifest = join(app, "Cargo.toml");
       const dependency = guide.sections.find((section) => section.id === "dependency").code
-        .replace("../fusor/crates/fusor-async", join(root, "crates/fusor-async"));
+        // Test the guide against this checkout while its public snippet uses crates.io.
+        .replace("{", `{ path = ${JSON.stringify(join(root, "crates/fusor-async"))},`);
       await writeFile(manifest, (await readFile(manifest, "utf8"))
         .replace("[dependencies]\n", `[dependencies]\n${dependency}\n`)
         + "\n" + guide.sections.find((section) => section.id === "adapt").code + "\n");

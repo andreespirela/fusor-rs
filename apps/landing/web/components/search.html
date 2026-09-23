@@ -9,15 +9,18 @@
       autocomplete="off"
     />
     <ul class="search-results">
-      <ForEach items="{{ state.results() }}" key="{{ |guide| guide.path }}"
-        ><li>
-          <a href="{{ item.get().path }}"
-            ><strong>{{ item.get().title }}</strong><span>{{ item.get().topic }}</span></a
-          >
-        </li></ForEach
-      >
+      <ForEach items="{{ state.results() }}" key="{{ |guide| guide.path }}">
+        <li>
+          <a href="{{ item.get().path }}">
+            <strong>{{ item.get().title }}</strong>
+            <span>{{ item.get().topic }}</span>
+          </a>
+        </li>
+      </ForEach>
     </ul>
-    <p class="empty-result" hidden="{{ !state.results().is_empty() }}">No matching guides.</p>
+    <p class="empty-result" hidden="{{ !state.results().is_empty() }}">
+      No matching guides.
+    </p>
     <p class="result-count" role="status">{{ state.results().len() }} of 4 guides</p>
   </section>
 </template>

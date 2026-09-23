@@ -37,10 +37,10 @@ const select = (name) =>
 const output = page.locator(".counter output");
 const code = page.locator(".source-content pre code");
 const examples = [
+  ["Counter", "counter"],
   ["Live search", "search"],
   ["Keyed lists", "keyed_list"],
   ["Async data", "async_data"],
-  ["Counter", "counter"],
 ];
 const asyncReady = async () => {
   await expect(page.locator(".issue-result")).not.toHaveAttribute(
@@ -49,11 +49,65 @@ const asyncReady = async () => {
   );
   await expect(page.locator('[data-field="title"]')).not.toHaveText("");
 };
+// Runs in the page: distinct syntax colors and their worst contrast ratio.
+const syntaxContrast = (element) => {
+  const rgb = (value) =>
+    value
+      .match(/[\d.]+/g)
+      .slice(0, 3)
+      .map(Number);
+  const luminance = (color) =>
+    color.reduce((sum, channel, index) => {
+      const value = channel / 255;
+      return (
+        sum +
+        [0.2126, 0.7152, 0.0722][index] *
+          (value <= 0.04045
+            ? value / 12.92
+            : ((value + 0.055) / 1.055) ** 2.4)
+      );
+    }, 0);
+  const bg = luminance(
+    rgb(
+      getComputedStyle(element.closest(".source-panel")).backgroundColor,
+    ),
+  );
+  const colors = [
+    ...new Set(
+      [...element.querySelectorAll(".syntax-token")].map(
+        (token) => getComputedStyle(token).color,
+      ),
+    ),
+  ];
+  return {
+    colors: colors.length,
+    minimum: Math.min(
+      ...colors.map((color) => {
+        const fg = luminance(rgb(color));
+        return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+      }),
+    ),
+  };
+};
 
 try {
   await page.goto(base);
-  await expect(page.getByLabel("Find a guide")).toBeVisible();
-  await expect(page.locator(".search-results li")).toHaveCount(4);
+  // The smallest example opens first, with its HTML file shown.
+  await expect(output).toHaveText("0");
+  await expect(
+    picker.getByRole("button", { name: "Counter", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("button", { name: "counter.html", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  // Template syntax in the source key renders literally, not as a binding.
+  await expect(page.locator(".source-key dt code")).toHaveText([
+    "rust:component",
+    "{{ … }}",
+    "on:click",
+    "bind:value",
+    "template!(…)",
+  ]);
   assert.equal(
     await page.title(),
     "fusor — A framework for Rust and HTML",
@@ -86,45 +140,7 @@ try {
       assert.equal(response.status(), 200);
       assert.match(response.headers()["content-type"], /^text\/plain/);
       assert.equal(await response.text(), source);
-      const contrast = await code.evaluate((element) => {
-        const rgb = (value) =>
-          value
-            .match(/[\d.]+/g)
-            .slice(0, 3)
-            .map(Number);
-        const luminance = (color) =>
-          color.reduce((sum, channel, index) => {
-            const value = channel / 255;
-            return (
-              sum +
-              [0.2126, 0.7152, 0.0722][index] *
-                (value <= 0.04045
-                  ? value / 12.92
-                  : ((value + 0.055) / 1.055) ** 2.4)
-            );
-          }, 0);
-        const bg = luminance(
-          rgb(
-            getComputedStyle(element.closest(".source-panel")).backgroundColor,
-          ),
-        );
-        const colors = [
-          ...new Set(
-            [...element.querySelectorAll(".syntax-token")].map(
-              (token) => getComputedStyle(token).color,
-            ),
-          ),
-        ];
-        return {
-          colors: colors.length,
-          minimum: Math.min(
-            ...colors.map((color) => {
-              const fg = luminance(rgb(color));
-              return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
-            }),
-          ),
-        };
-      });
+      const contrast = await code.evaluate(syntaxContrast);
       assert.ok(
         contrast.colors >= 3,
         `${stem}.${language}: multiple syntax colors`,
@@ -142,6 +158,54 @@ try {
     }
   }
 
+  // The same editor shows the page that hosts the components, from real source.
+  const componentFiles = page.getByRole("group", { name: "Component files" });
+  const pageFiles = page.getByRole("group", { name: "Page files" });
+  await expect(
+    componentFiles.getByRole("button", { name: "async_data.rs", exact: true }),
+  ).toBeVisible();
+  for (const [name, path] of [
+    ["index.html", "host/web/index.html"],
+    ["app.rs", "host/src/app.rs"],
+  ]) {
+    const button = pageFiles.getByRole("button", { name, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('.source-tabs button[aria-pressed="true"]')).toHaveCount(1);
+    const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+    assert.equal(await code.textContent(), source, `${name}: complete page source`);
+    await expect(
+      page.getByRole("link", { name: "Open the displayed source file" }),
+    ).toHaveAttribute("href", `./source/${path}.txt`);
+    const response = await context.request.get(`${base}/source/${path}.txt`);
+    assert.equal(response.status(), 200);
+    assert.match(response.headers()["content-type"], /^text\/plain/);
+    assert.equal(await response.text(), source);
+    const contrast = await code.evaluate(syntaxContrast);
+    assert.ok(contrast.colors >= 3, `${name}: multiple syntax colors`);
+    assert.ok(contrast.minimum >= 4.5, `${name}: readable syntax contrast`);
+  }
+  // Choosing another example returns to that component's HTML.
+  await select("Counter");
+  await expect(
+    componentFiles.getByRole("button", { name: "counter.html", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  // The tag named in the source note is the one the page really mounts.
+  const host = await readFile(
+    new URL("../host/web/index.html", import.meta.url),
+    "utf8",
+  );
+  for (const [label, tag] of [
+    ["Counter", "Counter"],
+    ["Live search", "LiveSearch"],
+    ["Keyed lists", "KeyedList"],
+    ["Async data", "AsyncData"],
+  ]) {
+    await select(label);
+    await expect(page.locator(".page-tag")).toHaveText(`<${tag}>`);
+    assert.ok(host.includes(`<${tag}></${tag}>`), `Host page mounts <${tag}>`);
+  }
+
   await select("Live search");
   const query = page.getByLabel("Find a guide");
   await query.fill("  TYPED  ");
@@ -149,6 +213,10 @@ try {
   await expect(page.locator(".result-count")).toHaveText("2 of 4 guides");
   await page.getByRole("button", { name: "search.rs", exact: true }).click();
   await expect(query).toHaveValue("  TYPED  ");
+  // Viewing the host page's source leaves the running component intact.
+  await pageFiles.getByRole("button", { name: "index.html", exact: true }).click();
+  await expect(query).toHaveValue("  TYPED  ");
+  await expect(page.locator(".search-results li")).toHaveCount(2);
   await page.screenshot({ path: `${artifacts}search-rust.png` });
   await query.fill("<script>alert(1)</script>");
   await expect(page.locator(".search-results li")).toHaveCount(0);
@@ -328,16 +396,23 @@ try {
 
   if (engine === chromium) {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    await page
-      .getByRole("button", { name: "Copy command", exact: true })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Copied!", exact: true }),
-    ).toBeVisible();
-    assert.equal(
-      await page.evaluate(() => navigator.clipboard.readText()),
-      "cargo install --path crates/fusor-cli --locked",
-    );
+  }
+  const platforms = page.getByRole("group", { name: "Installation platform" });
+  for (const [platform, command] of [
+    ["Windows", "irm https://fusor.build/install.ps1 | iex"],
+    ["macOS / Linux", "curl -fsSL https://fusor.build/install.sh | sh"],
+  ]) {
+    const button = platforms.getByRole("button", { name: platform, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".install-command code")).toHaveText(command);
+    const copy = page.getByRole("button", { name: "Copy command", exact: true });
+    await expect(copy).toBeVisible();
+    if (engine === chromium) {
+      await copy.click();
+      await expect(page.getByRole("button", { name: "Copied!", exact: true })).toBeVisible();
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), command);
+    }
   }
   const docs = JSON.parse(
     await readFile(
@@ -354,7 +429,7 @@ try {
       .evaluateAll((links) => links.map((link) => link.getAttribute("href")))) {
       assert.ok(slugs.has(href), `Documentation link exists: ${href}`);
     }
-    for (const width of [320, 390, 768, 1024, 1440]) {
+    for (const width of [320, 390, 701, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 844 });
       assert.equal(
         await page.evaluate(
@@ -363,6 +438,24 @@ try {
         true,
         `${label}: no overflow at ${width}px`,
       );
+      // The panel clips overflow, so check each file tab and link fits inside it.
+      const clipped = await page.evaluate(() => {
+        const panel = document
+          .querySelector(".source-panel")
+          .getBoundingClientRect();
+        return [...document.querySelectorAll(".source-tabs button, .source-tabs a")]
+          .filter((control) => {
+            const box = control.getBoundingClientRect();
+            return (
+              box.left < panel.left - 1 ||
+              box.right > panel.right + 1 ||
+              box.top < panel.top - 1 ||
+              box.bottom > panel.bottom + 1
+            );
+          })
+          .map((control) => control.textContent.trim() || control.ariaLabel);
+      });
+      assert.deepEqual(clipped, [], `${label}: source tabs fit at ${width}px`);
     }
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -387,7 +480,7 @@ try {
   ).toBeVisible();
   assert.deepEqual(errors, [], "No uncaught browser errors");
   console.log(
-    `${engine.name()}: all four examples, eight highlighted source files, syntax contrast, keyed DOM identity, automatic async coherence/supersession/recovery/disposal, keyboard interaction, and responsive layouts passed.`,
+    `${engine.name()}: all four examples, eight component and two page source files, syntax contrast, keyed DOM identity, automatic async coherence/supersession/recovery/disposal, keyboard interaction, and responsive layouts passed.`,
   );
 } finally {
   await browser.close();

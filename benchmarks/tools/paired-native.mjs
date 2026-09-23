@@ -40,7 +40,7 @@ const report = {
   binaries,
   pairs: [],
   limitations:
-    "Alternating process controls, not the six-framework publication evaluator. Binary implementations determine their warmups and samples.",
+    "Alternating process controls, not the full-protocol publication evaluator. Binary implementations determine their warmups and samples.",
 };
 try {
   for (const n of sizes)

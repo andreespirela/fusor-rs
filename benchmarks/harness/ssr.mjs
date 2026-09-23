@@ -3,19 +3,23 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import { root } from "./server.mjs";
+import { current } from "../tools/lib/protocol.mjs";
 process.env.NODE_ENV = "production";
 const outputDirectory = resolve(
   root,
   process.env.BENCH_OUTPUT_DIR || "target/benchmarks/current",
 );
-const frameworks = ["fusor", "react", "svelte", "solid", "vue", "preact"];
+const frameworks = current.frameworks;
 const records = [];
 const build = JSON.parse(
   await readFile(resolve(root, "benchmarks/dist/build.json"), "utf8"),
 );
+if (build.schema !== 2) throw Error("Rebuild with `just bench-build`");
 for (const framework of frameworks) {
+  // Rust renderers are native executables located by Cargo's artifact receipt.
+  const binary = build.nativeSsr[framework];
   const render =
-    framework === "fusor"
+    binary
       ? null
       : (
           await import(
@@ -35,7 +39,6 @@ for (const framework of frameworks) {
         samples.push(performance.now() - start);
       }
     } else {
-      const binary = build.nativeSsr;
       const result = JSON.parse(
         execFileSync(binary, [String(n)], {
           encoding: "utf8",

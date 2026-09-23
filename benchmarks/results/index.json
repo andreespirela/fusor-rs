@@ -1,15 +1,20 @@
 {
   "schemaVersion": 1,
   "published": {
-    "experiment": "20260922-baseline",
+    "experiment": "20260923-seven-framework-baseline",
     "evidence": "data/full.json",
-    "sha256": "b6e777142f76550fe205bbe999124da32af7241310d6e240281256878c3965ae"
+    "sha256": "15538b19361226540a298207996aa306f06395e11239d0e63a6a1830245a0e29"
   },
   "experiments": [
     {
       "id": "20260922-baseline",
       "title": "Six-framework baseline",
       "path": "history/20260922-baseline/record.json"
+    },
+    {
+      "id": "20260923-seven-framework-baseline",
+      "title": "Seven-framework baseline with Leptos",
+      "path": "history/20260923-seven-framework-baseline/record.json"
     }
   ]
 }

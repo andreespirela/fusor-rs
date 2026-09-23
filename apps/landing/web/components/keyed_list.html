@@ -10,8 +10,8 @@
       <button on:click="state.add()" disabled="{{ state.rows.get().len() >= 6 }}">Add row</button>
     </div>
     <ol class="keyed-rows">
-      <ForEach items="{{ state.rows.get() }}" key="{{ |id| *id }}"
-        ><li data-row="{{ item.get() }}">
+      <ForEach items="{{ state.rows.get() }}" key="{{ |id| *id }}">
+        <li data-row="{{ item.get() }}">
           <span class="row-id">#{{ item.get() }}</span>
           <input
             aria-label='{{ format!("Note for row {}", item.get()) }}'
@@ -24,8 +24,8 @@
           >
             ×
           </button>
-        </li></ForEach
-      >
+        </li>
+      </ForEach>
     </ol>
     <p class="empty-result" hidden="{{ !state.rows.get().is_empty() }}">
       No rows. Add one to start again.

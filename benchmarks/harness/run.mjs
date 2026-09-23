@@ -6,6 +6,7 @@ import { bundle, measureBundles } from "./bundles.mjs";
 import { sourceHash } from "./provenance.mjs";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
+import { current } from "../tools/lib/protocol.mjs";
 const samples = Number(process.env.BENCH_SAMPLES || 15),
   warmups = Number(process.env.BENCH_WARMUPS || 3);
 const outputDirectory = resolve(
@@ -13,8 +14,13 @@ const outputDirectory = resolve(
   process.env.BENCH_OUTPUT_DIR || "target/benchmarks/current",
 );
 const frameworks = (
-  process.env.BENCH_FRAMEWORKS || "fusor,react,svelte,solid,vue,preact"
+  process.env.BENCH_FRAMEWORKS || current.frameworks.join(",")
 ).split(",");
+if (
+  new Set(frameworks).size !== frameworks.length ||
+  frameworks.some((framework) => !current.frameworks.includes(framework))
+)
+  throw Error(`BENCH_FRAMEWORKS must name distinct frameworks of ${current.id}`);
 const seed = Number(process.env.BENCH_SEED || 20260919);
 let random = seed >>> 0;
 for (let i = frameworks.length - 1; i > 0; i--) {
@@ -94,13 +100,19 @@ const packages = JSON.parse(
 const ssr = JSON.parse(
   await readFile(resolve(outputDirectory, "ssr.json"), "utf8"),
 );
+const build = JSON.parse(
+  await readFile(resolve(root, "benchmarks/dist/build.json"), "utf8"),
+);
+if (build.schema !== 2) throw Error("Rebuild with `just bench-build`");
 const report = {
-  schema: 1,
+  schema: 2,
+  protocol: current.id,
+  // Only the complete current protocol is a full run; any subset is a smoke test.
   profile:
-    samples === 15 &&
-    warmups === 3 &&
+    samples === current.samples &&
+    warmups === current.warmups &&
     !process.env.BENCH_SKIP_MEMORY &&
-    frameworks.length === 6
+    frameworks.length === current.frameworks.length
       ? "baseline"
       : "smoke",
   generatedAt: new Date().toISOString(),
@@ -122,7 +134,13 @@ const report = {
     isolation:
       "sequential frameworks; fresh browser contexts; production builds",
   },
-  versions: { "fusor": "0.1.0-dev", ...packages.dependencies },
+  versions: {
+    "fusor": build.toolchain.fusor.version,
+    ...packages.dependencies,
+    "leptos": build.toolchain.leptos.leptos,
+  },
+  // Rust/Wasm production pipeline settings recorded by `just bench-build`.
+  toolchain: build.toolchain,
   results: [
     ...ssr.records.filter((record) => frameworks.includes(record.framework)),
   ],

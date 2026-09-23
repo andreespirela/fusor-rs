@@ -1,0 +1,71 @@
+{
+  "kind": "correctness",
+  "generatedAt": "2026-09-23T22:39:14.052Z",
+  "framework": "leptos",
+  "version": "0.8.20",
+  "checks": [
+    {
+      "engine": "chromium",
+      "version": "153.0.8010.12",
+      "status": "passed",
+      "checks": [
+        "mount",
+        "keyed swap identity",
+        "insert",
+        "remove",
+        "click",
+        "unmount",
+        "hydration identity",
+        "hydrated click exactly once",
+        "hydrated unmount"
+      ],
+      "fixtures": [
+        "hello",
+        "todo"
+      ],
+      "errors": []
+    },
+    {
+      "engine": "firefox",
+      "version": "155.0",
+      "status": "passed",
+      "checks": [
+        "mount",
+        "keyed swap identity",
+        "insert",
+        "remove",
+        "click",
+        "unmount",
+        "hydration identity",
+        "hydrated click exactly once",
+        "hydrated unmount"
+      ],
+      "fixtures": [
+        "hello",
+        "todo"
+      ],
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "version": "26.6",
+      "status": "passed",
+      "checks": [
+        "mount",
+        "keyed swap identity",
+        "insert",
+        "remove",
+        "click",
+        "unmount",
+        "hydration identity",
+        "hydrated click exactly once",
+        "hydrated unmount"
+      ],
+      "fixtures": [
+        "hello",
+        "todo"
+      ],
+      "errors": []
+    }
+  ]
+}

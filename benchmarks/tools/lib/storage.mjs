@@ -1,4 +1,4 @@
-import protocol from "../../schemas/full-protocol.json" with { type: "json" };
+import { protocolOf, acceptsFull } from "./protocol.mjs";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, mkdir, rename, access } from "node:fs/promises";
 import { resolve, dirname, sep } from "node:path";
@@ -84,12 +84,13 @@ export function validateRecord(record) {
 }
 export function validateReport(report, { full = false } = {}) {
   if (
-    report.schema !== 1 ||
+    ![1, 2].includes(report.schema) ||
     !Array.isArray(report.results) ||
     !report.results.length ||
     !Array.isArray(report.errors)
   )
     throw Error("Invalid measurement report");
+  const protocol = protocolOf(report);
   if (!/^[a-f0-9]{64}$/.test(report.sourceSha256 || ""))
     throw Error("Report has no source fingerprint");
   if (report.errors.length)
@@ -99,6 +100,8 @@ export function validateReport(report, { full = false } = {}) {
     const key = `${row.framework}/${row.id}`;
     if (seen.has(key)) throw Error(`Duplicate measurement: ${key}`);
     seen.add(key);
+    if (!protocol.frameworks.includes(row.framework))
+      throw Error(`Framework outside ${protocol.id}: ${key}`);
     if (row.status !== "measured") throw Error(`Unmeasured result: ${key}`);
     if (
       !row.samples?.length ||
@@ -118,15 +121,24 @@ export function validateReport(report, { full = false } = {}) {
       throw Error(`Incorrect statistics: ${key}`);
   }
   if (full) {
+    acceptsFull(protocol, report);
+    if (report.profile !== "baseline")
+      throw Error("A smoke or subset report cannot be a full report");
     const frameworks = protocol.frameworks;
+    const order = report.environment?.frameworkOrder;
     if (
       report.results.length !== frameworks.length * protocol.metrics.length ||
       report.memory?.length !== frameworks.length ||
       report.bundles?.length !== frameworks.length * protocol.fixtures.length ||
       report.environment.samples !== protocol.samples ||
-      report.environment.warmups !== protocol.warmups
+      report.environment.warmups !== protocol.warmups ||
+      !Array.isArray(order) ||
+      order.length !== frameworks.length ||
+      frameworks.some((framework) => !order.includes(framework))
     )
-      throw Error("Publication requires the full six-framework protocol");
+      throw Error(
+        `Publication requires the complete ${protocol.id} protocol (${frameworks.join(", ")})`,
+      );
     for (const framework of frameworks) {
       if (
         report.results.filter((r) => r.framework === framework).length !==

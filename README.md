@@ -2,9 +2,11 @@
   <img src="apps/landing/public/brand/fusor-horizontal.svg" alt="fusor" width="200">
 </p>
 
-# Build web interfaces with Rust and HTML
+# Build reactive web apps with Rust
 
-fusor is a reactive framework for the web. Write HTML templates and native Rust modules; fusor compiles the Rust to WebAssembly and connects your state to the DOM. When a signal changes, the bindings that read it update.
+Write your UI in HTML files. Keep state and frontend logic in Rust. No markup inside Rust macros.
+
+fusor compiles your Rust to WebAssembly for the browser. When a signal changes, the bindings that read it run again.
 
 **In development · v0.1** — This is experimental software. APIs will change; don't rely on it for production yet.
 
@@ -12,19 +14,22 @@ fusor is a reactive framework for the web. Write HTML templates and native Rust 
 
 ## A component in two files
 
-The HTML is the template. Expressions and event handlers are Rust:
+The view is an HTML file. Bindings and event handlers are Rust expressions:
 
 ```html
 <!-- web/components/counter.html -->
 <template rust:component="Counter">
-  <div>
-    <output>{{ state.count.get() }}</output>
-    <button on:click="state.count.update(|n| *n += 1)">Increment</button>
+  <div class="counter">
+    <output aria-live="polite">{{ state.count.get() }}</output>
+    <div class="counter-actions">
+      <button on:click="state.increment()">Increment</button>
+      <button on:click="state.reset()">Reset</button>
+    </div>
   </div>
 </template>
 ```
 
-The Rust module owns the state and associates it with the template:
+The Rust module owns the state and behavior, and connects them to the HTML with `template!`:
 
 ```rust
 // src/counter.rs
@@ -36,25 +41,50 @@ pub struct Counter {
     count: Signal<i32>,
 }
 
+impl Counter {
+    fn increment(&self) {
+        self.count.update(|n| *n += 1);
+    }
+
+    fn reset(&self) {
+        self.count.set(0);
+    }
+}
+
 fusor::template!("web/components/counter.html");
 ```
 
-The button updates a `Signal<i32>`. The output reads that signal, so fusor updates its text when the value changes. Rust compiles through Cargo and runs in the browser as WebAssembly. This example comes from the [landing app](apps/landing/web/components/counter.html). The documentation site has a full walkthrough of templates, modules, and application startup.
+`rust:component="Counter"` makes the struct's fields and methods available as `state`. Each button calls one of its methods, which changes the `count` signal. The output reads that signal, so its text updates when the count changes. The compiler checks the expressions in the HTML along with the rest of the module.
+
+These two files are a complete reusable component, not a whole app. A page places it with a `<Counter></Counter>` tag inside `<App>`, which starts the app and owns everything in it. The landing page's example editor includes, next to each component's files, a [short host page](apps/landing/host/web/index.html) and its [Rust module](apps/landing/host/src/app.rs) that mount this counter and the other live examples. `fusor new` creates `Cargo.toml`, `build.rs`, and `src/lib.rs`; declare additional component modules in `src/lib.rs`. The documentation site has a full walkthrough of templates, modules, and application startup.
 
 ## Get started
 
-You need Rust 1.85 or newer. The framework crates are not published yet, so start from a [repository checkout](https://github.com/andreespirela/fusor-rs):
+The v0.1.0 CLI and crates are released. To build apps you need Rust 1.85 or newer, installed with [rustup](https://rustup.rs). Then install the CLI:
 
 ```sh
-cargo install --path crates/fusor-cli --locked
-fusor new ../my-app --framework-path "$PWD"
-cd ../my-app
+# macOS or Linux
+curl -fsSL https://fusor.build/install.sh | sh
+```
+
+```powershell
+# Windows PowerShell
+irm https://fusor.build/install.ps1 | iex
+```
+
+The installer downloads the latest release, verifies its checksum, and puts `fusor` and `cargo-fusor` in `.fusor/bin` under your home directory. On macOS and Linux it prints the line to add to your `PATH` and leaves your shell configuration alone. On Windows it adds the directory to your user `PATH`; open a new terminal before running `fusor`. The scripts are [install.sh](install.sh) and [install.ps1](install.ps1) in this repository if you want to read them first.
+
+Create and run an app:
+
+```sh
+fusor new my-app
+cd my-app
 fusor dev
 ```
 
-Open the URL printed by `fusor dev` (normally `http://127.0.0.1:4173`). The starter has a working counter component. Edit its HTML or Rust and the dev server rebuilds the app. Run `fusor check` for compiler errors or `fusor build` for a static build in `dist/`.
+Open the URL printed by `fusor dev` (normally `http://127.0.0.1:4173`). The starter has a working counter component. Edit its HTML or Rust and the dev server rebuilds the app. Run `fusor check` for compiler errors or `fusor build` for a static build in `dist/`. The [installation guide](https://fusor.build/docs/installation) covers requirements and troubleshooting in more detail.
 
-The [documentation app](apps/docs/) contains the installation walkthrough and authoring guides. To run it from this checkout:
+The [documentation app](apps/docs/) contains the installation walkthrough and authoring guides. To run it from a repository checkout:
 
 ```sh
 cargo fusor dev -p fusor-docs
@@ -80,6 +110,14 @@ The default application is a client side WebAssembly app. Optional packages add 
 - [Integrations](examples/integrations/) — CodeMirror and Chart.js connected to Rust state.
 
 The [documentation showcase](apps/docs/) has more runnable examples. Performance measurements and their methodology live in [benchmarks](benchmarks/README.md).
+
+## How is this different from Dioxus?
+
+[Dioxus](https://github.com/DioxusLabs/dioxus) components are Rust functions that return `rsx!` markup, and Dioxus reconciles their output through a [`VirtualDom`](https://docs.rs/dioxus-core/latest/dioxus_core/struct.VirtualDom.html). fusor writes markup in separate `.html` templates connected to Rust modules with `template!`. It has no virtual DOM: bindings track the signals they read and update their associated DOM targets.
+
+## How is this different from Leptos?
+
+[Leptos](https://github.com/leptos-rs/leptos) and fusor share a reactive model: fine-grained signal tracking and no virtual DOM. The difference is authoring. Leptos views are written in Rust, with the [`view!`](https://docs.rs/leptos/latest/leptos/macro.view.html) macro or builder functions. fusor uses separate HTML templates, with Rust expressions in bindings and attributes, connected to Rust modules with `template!`.
 
 ## Contributing
 

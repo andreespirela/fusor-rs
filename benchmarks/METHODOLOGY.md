@@ -1,15 +1,18 @@
 # fusor benchmark methodology
 
-This suite measures six independently built production applications performing
+This suite measures seven independently built production applications performing
 equivalent application work. The [history index](results/index.json) identifies
 the published result and the record for every run. Notes live inside each
 record's `notes` array; executable tooling is shared under `tools/`.
-The documentation and results websites are fusor applications; the five
+The documentation and results websites are fusor applications; the six
 comparison frameworks are used only in their own isolated benchmark applications.
+Leptos builds in its own Cargo workspace (`workloads/leptos/`, with its own
+`Cargo.lock` and Rust 1.88 MSRV), so it adds nothing to fusor's dependency graph.
 
 ## Reproduce
 
-Requirements: the repository's Rust toolchain and Wasm target, pinned wasm-bindgen
+Requirements: Rust 1.88 or newer (for the isolated Leptos workspace), the
+`wasm32-unknown-unknown` target, pinned wasm-bindgen
 CLI (`cargo fusor install -p fusor-playground`), Node 22.16 or newer, and an
 installed Chrome. The published run additionally enables Binaryen 132 via
 `FUSOR_WASM_OPT`; install that tool separately. Omitting the variable measures
@@ -33,9 +36,9 @@ During a run, the runner serves each production comparison application at
 `/workloads/<framework>/`. `just preview` serves the published results at
 `/benchmarks/`, beside the docs.
 
-`just bench-build` builds all six browser workloads, all server renderers, and twelve
-independent Hello World/Todo fixtures. Cargo's JSON artifact receipt locates the
-native renderer; the runner does not guess a target directory. `just bench-run` runs
+`just bench-build` builds all seven browser workloads, all server renderers, and fourteen
+independent Hello World/Todo fixtures. Cargo's JSON artifact receipts locate the
+fusor and Leptos native renderers (`benchmarks/dist/build.json`, schema 2); the runner does not guess a target directory. `just bench-run` runs
 server measurements first, then the browser measurements. The shared runner preserves raw samples under `results/history/<id>/data/`.
 Temporary JSON, CSV and logs go to `target/benchmarks/runs/<id>/`; failed checks
 remain visible and exit nonzero. Publication is explicit and updates the history
@@ -64,6 +67,20 @@ framework's production CLI. The published run explicitly enables Binaryen
 and nontrapping-float-to-int enabled). This is an optional production CLI step,
 applied to all three fusor fixtures. No custom compression or native-server
 bytecode step is applied.
+
+Leptos 0.8.20 (reactive_graph 0.2.14, tachys 0.2.18) uses an equivalent pipeline in
+`workloads/leptos/build.mjs`: the same release profile (`opt-level=3`, LTO, one
+codegen unit, aborting panics, debuginfo stripped), `cargo build --locked` for
+`wasm32-unknown-unknown`, the same wasm-bindgen 0.2.117 CLI with `--target web`
+and `--remove-name-section` (kept with `FUSOR_KEEP_WASM_NAMES=1`), and, only
+when `FUSOR_WASM_OPT` is set, Binaryen 132 with the identical `-O3` flags above.
+The script verifies both tool versions. It resolves wasm-bindgen from
+`FUSOR_WASM_BINDGEN`, then fusor's tool cache (provisioned by `cargo fusor install
+-p fusor-playground`), then `PATH`, and requires the exact version in the Leptos
+`Cargo.lock`. Each application is a separate Cargo invocation, so the benchmark's
+`hydrate` feature is not unified with the fixtures' `csr` feature. The benchmark
+bundle uses `hydrate` because the same page both mounts and hydrates. The applied
+settings are recorded in the report's `toolchain` field.
 
 The production CLI removes the nonsemantic Wasm `name` section. Development and
 debug builds retain names; `FUSOR_KEEP_WASM_NAMES=1` retains them in optimized
@@ -108,6 +125,8 @@ Hydration uses a fresh document for every sample. Actual native/JavaScript SSR H
 is inserted before timing; its official bootstrap is executed before attachment.
 Every row must retain its identity, and the first button must increment exactly
 once. Solid's generated hydration bootstrap is included in its SSR HTML size.
+Leptos hydrates with `leptos::mount::hydrate_from`; this synchronous application
+needs no serialized resource data, so its SSR HTML contains no bootstrap script.
 This measures warm-runtime attachment, separately from startup/download cost.
 HTML parsing and network transfer are excluded from the hydration timer.
 
@@ -129,6 +148,14 @@ React and Preact use `flushSync` for explicit imperative operations; Svelte uses
 `flushSync`; Solid uses its synchronous signal propagation with `batch` for bulk
 work; Vue awaits `nextTick`; fusor uses synchronous signal propagation and
 `batch`. React/Preact hydration additionally waits for a layout-effect acknowledgment.
+Leptos runs DOM updates in render effects that are tasks on the wasm-bindgen-futures
+executor installed by `mount_to`/`hydrate_from`; its barrier awaits
+`leptos::task::tick()` (`Executor::tick`). That runs every task queued before it,
+including effect re-runs and the completion of tasks owned by an unmounted view.
+Leptos 0.8 has no render-effect `batch`: its effects are already deferred to that
+tick, so bulk operations set signals directly. Unmount drops the `UnmountHandle`,
+which removes the view and disposes its root owner. Rows use reference-counted
+signals, so an inserted row needs no owner and is released with its last holder.
 React warns that `flushSync` can hurt performance. It is an explicit measurement
 barrier here, not an application architecture recommendation.
 
@@ -148,7 +175,11 @@ remain; “cold context” does not mean a cold device.
 
 Server timings use Rust's `Instant` or Node's `performance.now()`, after three
 warmups, for 15 completed string renders. Rust and JavaScript execute in different
-processes/runtimes and produce different metadata overhead. Each record includes
+processes/runtimes and produce different metadata overhead. Leptos renders like its
+server integrations: a root owner with `SsrSharedContext` and the in-order HTML
+stream (`to_html_stream_in_order`), collected into one string. tachys 0.2.18's
+synchronous `to_html` writes an extra text node before every `<For>` row that does
+not hydrate, so it is not used. Each record includes
 HTML bytes. Process startup, transport, parsing, and streaming are excluded.
 
 The baseline runs sequentially on one local machine without network/CPU throttling,
@@ -204,6 +235,9 @@ categories remain present even if fusor's output is substantially larger.
 - [Solid hydration script](https://docs.solidjs.com/reference/rendering/hydration-script)
 - [Vue nextTick](https://vuejs.org/api/general.html#nexttick)
 - [Preact API reference](https://preactjs.com/guide/v10/api-reference/)
+- [Leptos `mount` (mount_to, hydrate_from)](https://docs.rs/leptos/0.8.20/leptos/mount/index.html)
+- [Leptos `task::tick`](https://docs.rs/leptos/0.8.20/leptos/task/fn.tick.html)
+- [Leptos `For`](https://docs.rs/leptos/0.8.20/leptos/control_flow/fn.For.html)
 
 Unsupported work is not assigned a zero. Streaming SSR, server async seeding,
 mobile/network profiles, and process-wide memory are outside this baseline.

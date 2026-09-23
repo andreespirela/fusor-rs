@@ -8,8 +8,8 @@
         Issue #34
       </button>
     </div>
-    <Async
-      ><article class="issue-result" data-issue="{{ state.issue.get() }}">
+    <Async>
+      <article class="issue-result" data-issue="{{ state.issue.get() }}">
         <h3>Issue #{{ state.issue.get() }}</h3>
         <IssueField
           issue="{{ state.issue.clone() }}"
@@ -20,14 +20,15 @@
           issue="{{ state.issue.clone() }}"
           field='{{ "status" }}'
           delay="{{ 1000 }}"
-        ></IssueField></article
-    ></Async>
+        ></IssueField>
+      </article>
+    </Async>
     <p class="fixture-note">Local sample data · 250 / 1,000 ms</p>
   </section>
 </template>
 
 <template rust:component="IssueField">
-  <Await value="{{ state.value }}" let="value"
-    ><p class="issue-field" data-field="{{ state.field }}">{{ value }}</p></Await
-  >
+  <Await value="{{ state.value }}" let="value">
+    <p class="issue-field" data-field="{{ state.field }}">{{ value }}</p>
+  </Await>
 </template>

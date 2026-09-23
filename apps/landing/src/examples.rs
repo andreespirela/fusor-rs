@@ -2,10 +2,10 @@ use crate::code::{self, CodeFile};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Example {
+    Counter,
     Search,
     KeyedList,
     AsyncData,
-    Counter,
 }
 
 impl Example {
@@ -24,22 +24,33 @@ impl Example {
 
     pub fn description(self) -> &'static str {
         match self {
-            Self::Counter => "Update a signal. Only the text node that reads it changes.",
+            Self::Counter => {
+                "The buttons call methods on the Rust struct. The output reads the count, so only its text updates."
+            }
             Self::Search => {
-                "Type to filter the guides. The input and results share reactive state."
+                "bind:value keeps the input in a Rust String. A Rust method filters the guides as you type."
             }
             Self::KeyedList => {
-                "Reorder editable rows. Stable keys keep each row’s DOM and input value together."
+                "<ForEach> repeats the row HTML for each id in a Rust Vec. Keys keep each row’s DOM, and its note, when the order changes."
             }
             Self::AsyncData => {
-                "Switch issues while loading. The title and status publish together when both reads are ready."
+                "Each field loads separately. <Async> keeps the previous issue visible until both reads finish, then shows them together."
             }
+        }
+    }
+
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::Counter => "<Counter>",
+            Self::Search => "<LiveSearch>",
+            Self::KeyedList => "<KeyedList>",
+            Self::AsyncData => "<AsyncData>",
         }
     }
 
     pub fn guide(self) -> &'static str {
         match self {
-            Self::Counter => "/docs/components",
+            Self::Counter => "/docs/html-and-rust",
             Self::Search => "/docs/reactivity",
             Self::KeyedList => "/docs/components/for-each",
             Self::AsyncData => "/docs/coherent-async",

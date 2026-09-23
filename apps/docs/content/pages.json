@@ -30,7 +30,7 @@
       {
         "id": "choose-a-start",
         "title": "Start with the generated app",
-        "body": "Begin with Installation. It starts from a local framework checkout, creates a separate Cargo app, and tells you what to expect in the browser. Project structure then explains the files the CLI generated. You need HTML and a terminal, not prior Rust experience: the guides introduce each Rust piece — structs, impl blocks, signals, closures — the first time an example uses it.",
+        "body": "Begin with Installation. It installs the CLI, creates a Cargo app, and tells you what to expect in the browser. Project structure then explains the files the CLI generated. You need HTML and a terminal, not prior Rust experience: the guides introduce each Rust piece — structs, impl blocks, signals, closures — the first time an example uses it.",
         "code": "",
         "language": "Rust",
         "note": "",
@@ -73,23 +73,45 @@
     "slug": "installation",
     "title": "Installation",
     "group": "Get started",
-    "lead": "Create a separate Cargo app, run it, and make your first visible change. You do not need prior fusor knowledge.",
+    "lead": "Install the CLI, create an application, and make your first visible change.",
     "sections": [
       {
         "id": "requirements",
         "title": "What you need",
-        "body": "Install Rust 1.85 or newer with `rustup`, Rust’s official installer. It includes Cargo, the package manager and build tool. You also need your platform’s native linker, usually supplied by its developer tools.\n\nThese crates are not yet published on `crates.io`. Use the fusor repository checkout supplied with this project and open a terminal at its root: the directory containing `crates/`, `examples/`, and `Cargo.toml`. This documentation does not yet provide a public download URL.\n\nThe command below builds `fusor` from this checkout and installs it in Cargo’s binary directory. After installation, `fusor` is available on your shell’s `PATH`.",
-        "code": "# In the fusor repository root:\nrustc --version\ncargo --version\ncargo install --path crates/fusor-cli --locked",
+        "body": "Install Rust 1.85 or newer with rustup, Rust’s official installer. It includes Cargo, the package manager and build tool. You also need your platform’s native linker, usually supplied by its developer tools.\n\nCheck that Rust and Cargo are available, then use the installer for your operating system below. The CLI downloads as a ready-to-run binary; your applications build with Rust.",
+        "code": "rustc --version\ncargo --version",
         "language": "Terminal",
-        "note": "Rust-only browser apps do not require Node or npm. Optional component JavaScript and island browser builds require Node. The framework’s browser tests also use Node."
+        "note": "Rust-only browser apps do not require Node or npm. Optional component JavaScript and island browser builds require Node. The framework’s browser tests also use Node.",
+        "links": [
+          {
+            "href": "https://rustup.rs/",
+            "label": "Install Rust with rustup"
+          }
+        ]
+      },
+      {
+        "id": "install-unix",
+        "title": "Install on macOS or Linux",
+        "body": "Run this command in your terminal. The installer downloads the latest released CLI for your operating system and processor, verifies its checksum, and installs fusor and cargo-fusor in ~/.fusor/bin.",
+        "code": "curl -fsSL https://fusor.build/install.sh | sh",
+        "language": "Terminal",
+        "note": "Follow the PATH instructions printed by the installer. For the default location, add `export PATH=\"$HOME/.fusor/bin:$PATH\"` to ~/.zshrc or ~/.bashrc and reload your shell. To use fusor immediately, run that export command in the current terminal too."
+      },
+      {
+        "id": "install-windows",
+        "title": "Install on Windows",
+        "body": "Run this command in PowerShell. The installer downloads the latest released Windows CLI, verifies its checksum, and installs fusor and cargo-fusor in your user profile’s .fusor\\bin directory.",
+        "code": "irm https://fusor.build/install.ps1 | iex",
+        "language": "PowerShell",
+        "note": "The installer adds its bin directory to your user PATH. Open a new PowerShell window after installation so the commands are available."
       },
       {
         "id": "create",
         "title": "Generate an application",
-        "body": "From that same repository root, create a sibling folder named `my-app`. The `--framework-path` argument tells the generator where the unpublished local crates live. The CLI writes the manifest, Rust modules, HTML templates, CSS, and build script for you. It refuses to overwrite an existing destination.",
-        "code": "# Still in the fusor repository root:\nfusor new ../my-app --framework-path \"$PWD\"\ncd ../my-app",
+        "body": "In the directory where you keep your projects, create an application named `my-app`. The CLI writes the manifest, Rust modules, HTML templates, CSS, and build script, then prepares and checks the app. Its framework dependencies come from crates.io.",
+        "code": "fusor --version\nfusor new my-app\ncd my-app",
         "language": "Terminal",
-        "note": "If you already have a `my-app` folder, choose a different new name. The generated manifest records paths to this checkout; keep it available while developing."
+        "note": "Choose a new directory name: the CLI refuses to overwrite an existing destination. The first run prepares the Rust toolchain, Wasm target, and matching build tools, so it can take longer than later runs."
       },
       {
         "id": "run",
@@ -119,7 +141,7 @@
         "body": "In another terminal inside `my-app`, run `fusor check`, then build the optimized release with `fusor build`.\n\nThe generated `dist/` directory contains HTML, public assets, JavaScript glue, and Wasm. Use `fusor preview` to preview those files locally. To deploy, publish the contents of `dist/` at your configured base path.",
         "code": "# In my-app:\nfusor check\nfusor build --locked\nfusor preview --port 8092",
         "language": "Terminal",
-        "note": "Open http://127.0.0.1:8092/ for the release preview. The first dev/check command creates `Cargo.lock`; `--locked` then prevents dependency resolution from changing it.",
+        "note": "Open http://127.0.0.1:8092/ for the release preview. Project creation writes Cargo.lock; `--locked` prevents later builds from changing dependency resolution.",
         "links": [
           {
             "href": "/docs/routing#hosting",
@@ -130,7 +152,7 @@
       {
         "id": "troubleshooting",
         "title": "If the first run fails",
-        "body": "“fusor: command not found” means the installed CLI is not on your shell’s `PATH`. Run the installation command above and ensure Cargo’s bin directory is on `PATH`. A missing Wasm target or bindgen tool is handled by `fusor install` inside the app. A compile error in HTML usually points to the Rust expression you wrote in the HTML; resolve the first diagnostic before adding more code.",
+        "body": "“fusor: command not found” means the installed CLI is not on your shell’s PATH. On macOS or Linux, follow the installer’s instructions for ~/.fusor/bin. On Windows, open a new PowerShell window after installation.\n\nIf project preparation fails, the generated sources are preserved. Run `fusor install` inside the app to resume. A compile error in HTML usually points to the Rust expression you wrote in the HTML; resolve the first diagnostic before adding more code.",
         "code": "",
         "language": "Rust",
         "note": "",
@@ -153,16 +175,16 @@
         "id": "files",
         "title": "Find the generated files",
         "body": "The entry HTML defines the page. HTML under `web/components/` defines reusable markup and is discovered automatically. Each ordinary Rust module associates its HTML with `template!(path)`. `public/` holds served assets; `dist/` is generated output.",
-        "code": "my-app/\n  Cargo.toml\n  build.rs\n  src/\n    lib.rs\n    app.rs\n    counter.rs\n  web/\n    index.html\n    components/\n      counter.html\n  public/\n    app.css",
+        "code": "my-app/\n  Cargo.toml\n  rust-toolchain.toml\n  build.rs\n  src/\n    lib.rs\n    app.rs\n    counter.rs\n  web/\n    index.html\n    components/\n      counter.html\n  public/\n    app.css",
         "language": "Generated file tree",
         "note": ""
       },
       {
         "id": "configuration",
         "title": "Read the manifest",
-        "body": "This is the generated manifest with framework paths shortened for the sibling layout `fusor/` + `my-app/`. Keep the generated absolute paths or adjust them to your checkout.\n\nThe `dom` feature enables browser bindings. The default entry is `web/index.html`; reusable HTML is discovered under `web/components/`. One file may declare several component templates.\n\nThe core crate is published as `fusor-core`, and its library is named `fusor`, so your code writes `use fusor::...`.",
-        "code": "[package]\nname = \"my-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\n\n[workspace]\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[dependencies]\nfusor-core = { path = \"../fusor/crates/fusor-core\", version = \"=0.1.0\", features = [\"dom\"] }\nwasm-bindgen = \"=0.2.117\"\n\n[build-dependencies]\nfusor-build = { path = \"../fusor/crates/fusor-build\", version = \"=0.1.0\" }\n\n[package.metadata.fusor]\nassets = \"public\"\noutput = \"dist\"\nbase-path = \"/\"\n\n[profile.release]\nopt-level = \"s\"\nlto = true\ncodegen-units = 1\npanic = \"abort\"",
-        "language": "Cargo.toml · generated, paths made relative",
+        "body": "The generated manifest pins the framework crates to the CLI’s release version and downloads them from crates.io.\n\nThe `dom` feature enables browser bindings, and `fusor-components` supplies browser components. The default entry is `web/index.html`; reusable HTML is discovered under `web/components/`. One file may declare several component templates.\n\nThe core crate is published as `fusor-core`, and its library is named `fusor`, so your code writes `use fusor::...`.",
+        "code": "[package]\nname = \"my-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\n\n[workspace]\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[dependencies]\nfusor-core = { version = \"=0.1.0\", features = [\"dom\"] }\nfusor-components = { version = \"=0.1.0\", features = [\"browser\"] }\nwasm-bindgen = \"=0.2.117\"\n\n[build-dependencies]\nfusor-build = { version = \"=0.1.0\" }\n\n[package.metadata.fusor]\nassets = \"public\"\noutput = \"dist\"\nbase-path = \"/\"\n\n[profile.release]\nopt-level = \"s\"\nlto = true\ncodegen-units = 1\npanic = \"abort\"",
+        "language": "Cargo.toml · generated",
         "note": "In `[package.metadata.fusor]`, set `templates = [\"ui/components\", \"ui/pages\"]` once for another directory layout, or [] to disable discovery. Paths are package-relative, bounded to this package, and cannot overlap output. Discovery rejects symlinks."
       },
       {
@@ -1262,9 +1284,9 @@
         "id": "start",
         "title": "Start with a generated app",
         "body": "Follow Installation to generate and run an app. Replace `src/app.rs` and `web/index.html` with the two complete files below. Keep the generated `src/lib.rs`, `build.rs`, and `Cargo.toml`. Newly generated apps include the `fusor-components` dependency; an existing workspace app should add `fusor-components` using the same version or local path as its other fusor crates.",
-        "code": "[dependencies]\nfusor-components = { path = \"../fusor/crates/fusor-components\", features = [\"browser\"] }",
+        "code": "[dependencies]\nfusor-components = { version = \"=0.1.0\", features = [\"browser\"] }",
         "language": "Cargo.toml",
-        "note": "Adjust this path to your checkout. `<ForEach>` is a reserved built-in HTML tag; it needs no use import or template registration. Your own component tags still use normal Rust imports.",
+        "note": "Apps created with `fusor new` already include this dependency. `<ForEach>` is a reserved built-in HTML tag; it needs no use import or template registration. Your own component tags still use normal Rust imports.",
         "links": [
           {
             "href": "/docs/installation",
@@ -1591,7 +1613,7 @@
       {
         "id": "run",
         "title": "Open the working companion",
-        "body": "The remaining examples use the checked-in companion, which deliberately keeps the supported external-script/explicit-registration API.\n\nAfter Installation, run this command from the framework checkout and open http://127.0.0.1:8091/. Paths below are relative to `apps/docs/tutorial/`.",
+        "body": "The remaining examples use the checked-in companion, which deliberately keeps the supported external-script/explicit-registration API.\n\nTo run the companion, clone https://github.com/andreespirela/fusor-rs and run this command from the repository root. Open http://127.0.0.1:8091/. Paths below are relative to `apps/docs/tutorial/`.",
         "code": "# From the fusor repository root, after Installation:\nfusor dev --manifest-path apps/docs/tutorial/Cargo.toml --port 8091",
         "language": "Terminal",
         "note": "",
@@ -2047,8 +2069,8 @@
       {
         "id": "dependency",
         "title": "Add the async crate to your own app",
-        "body": "The runnable companion already declares `fusor-async` with the browser feature.\n\nThe line below shows the dependency to add under `[dependencies]` if adapting this code in the sibling `my-app` from Installation. It is only the dependency step: use the complete file-wiring checklist at the end of this page before copying the companion’s files.",
-        "code": "fusor-async = { path = \"../fusor/crates/fusor-async\", features = [\"browser\"] }",
+        "body": "The runnable companion already declares `fusor-async` with the browser feature.\n\nThe line below shows the dependency to add under `[dependencies]` if adapting this code in the `my-app` from Installation. It is only the dependency step: use the complete file-wiring checklist at the end of this page before copying the companion’s files.",
+        "code": "fusor-async = { version = \"=0.1.0\", features = [\"browser\"] }",
         "language": "Cargo.toml · add under [dependencies]",
         "note": ""
       },
@@ -2484,9 +2506,9 @@
         "id": "setup",
         "title": "Start with two pages and a fallback",
         "body": "This example replaces the main page of the generated `my-app` from Installation. Keep its `build.rs` and existing dependencies.\n\nAdd the dependency below under `[dependencies]`. In `[package.metadata.fusor]`, add `history-fallback = [\"/articles\", \"/missing\"]`.\n\nCreate the five files below. The build discovers `web/components/pages.html`; a `template!` call in its associated Rust module connects that HTML to the page types.",
-        "code": "fusor-router = { path = \"../fusor/crates/fusor-router\", features = [\"browser\"] }",
+        "code": "fusor-router = { version = \"=0.1.0\", features = [\"browser\"] }",
         "language": "Cargo.toml · add under [dependencies]",
-        "note": "The relative framework path assumes the sibling layout from Installation."
+        "note": "Use the same framework version as the app generated by your CLI."
       },
       {
         "id": "page-state",
@@ -2809,9 +2831,9 @@
       {
         "id": "dependencies",
         "title": "Put dependencies in the packages that use them",
-        "body": "The existing fixture inherits paths from the workspace. If creating your own sibling workspace beside fusor, define the dependencies below in its root `Cargo.toml` and inherit them in member packages.\n\nThe descriptor crate uses islands and serde; the native site uses server and islands; a browser unit enables dom/islands on fusor and browser on fusor-islands. Keep each unit’s generated HTML setup and build dependency as in a normal app.",
-        "code": "[workspace.dependencies]\nfusor-core = { path = \"../fusor/crates/fusor-core\" }\nfusor-build = { path = \"../fusor/crates/fusor-build\" }\nfusor-islands = { path = \"../fusor/crates/fusor-islands\" }\nfusor-server = { path = \"../fusor/crates/fusor-server\" }\nserde = { version = \"1\", features = [\"derive\"] }\nwasm-bindgen = \"=0.2.117\"",
-        "language": "Cargo.toml · root of a separate sibling workspace",
+        "body": "The existing fixture inherits paths from the workspace. For your own workspace, define the registry dependencies below in its root `Cargo.toml` and inherit them in member packages.\n\nThe descriptor crate uses islands and serde; the native site uses server and islands; a browser unit enables dom/islands on fusor and browser on fusor-islands. Keep each unit’s generated HTML setup and build dependency as in a normal app.",
+        "code": "[workspace.dependencies]\nfusor-core = { version = \"=0.1.0\" }\nfusor-build = { version = \"=0.1.0\" }\nfusor-islands = { version = \"=0.1.0\" }\nfusor-server = { version = \"=0.1.0\" }\nserde = { version = \"1\", features = [\"derive\"] }\nwasm-bindgen = \"=0.2.117\"",
+        "language": "Cargo.toml · root of a separate workspace",
         "note": "In the browser member’s `[dependencies]`, use `fusor-core = { workspace = true, features = [\"islands\"] }` and `fusor-islands = { workspace = true, features = [\"browser\"] }`. The setting `workspace = true` requires those dependencies to be defined in the workspace manifest."
       },
       {
@@ -3249,7 +3271,7 @@
       {
         "id": "source",
         "title": "Read the exact source behind a guide",
-        "body": "The code blocks for the generated app and companion examples are read from their source files during the docs build.\n\nSource links below open plain text in a new tab; commands and paths marked “repository root” refer to the same checkout as these docs. This pre-release documentation describes this checkout rather than a published stable version.",
+        "body": "The code blocks for the generated app and companion examples are read from their source files during the docs build.\n\nSource links below open plain text in a new tab; commands and paths marked “repository root” refer to the same checkout as these docs. The installation guide uses the released CLI and registry crates. Repository examples can also be run from a local checkout.",
         "code": "",
         "language": "Rust",
         "note": "",

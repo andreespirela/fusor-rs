@@ -1,0 +1,26 @@
+# An isolated workspace: the Leptos comparison applications keep their own
+# lockfile, MSRV and dependency graph, separate from fusor's workspace.
+[workspace]
+members = ["app", "hello", "todo"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# Leptos 0.8 requires Rust 1.88.
+rust-version = "1.88"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+leptos = { version = "=0.8.20", default-features = false }
+# The same wasm-bindgen as fusor, so both use one pinned CLI (build.mjs checks it).
+wasm-bindgen = "=0.2.117"
+
+# Equivalent to fusor's release profile in the repository's root Cargo.toml.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

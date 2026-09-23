@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>leptos benchmark workload</title></head><body><div id="app"></div><script type="module">
+import init, * as unit from "/workloads/leptos/pkg/app.js";
+import { install } from "/workloads/leptos/common.js";
+const wasm = await init();
+const api = { flush: unit.bench_flush, wasmBytes: () => wasm.memory.buffer.byteLength };
+for (const name of ["mount", "hydrate", "unmount", "update", "bulk", "insert", "remove", "swap", "fanout", "fanin"])
+  api[name] = unit["bench_" + name];
+await install(api);
+</script></body></html>

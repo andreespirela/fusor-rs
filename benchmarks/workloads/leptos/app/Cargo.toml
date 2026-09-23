@@ -1,0 +1,29 @@
+[package]
+name = "leptos-bench-workload"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# The browser bundle is built with `hydrate` (it both mounts and hydrates);
+# the native server renderer with `ssr`.
+[features]
+hydrate = ["leptos/hydrate", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
+ssr = ["leptos/ssr", "dep:hydration_context", "dep:futures"]
+
+[[bin]]
+name = "ssr"
+required-features = ["ssr"]
+
+[dependencies]
+leptos.workspace = true
+# Leptos' own SSR shared context (the version leptos 0.8.20 depends on).
+hydration_context = { version = "=0.3.1", optional = true }
+futures = { version = "0.3", optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["Document", "Element", "HtmlElement"] }

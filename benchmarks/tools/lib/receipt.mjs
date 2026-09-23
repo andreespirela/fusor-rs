@@ -21,7 +21,11 @@ export async function receipt() {
   const cargoReceipt = await readJson(
     resolve(root, "benchmarks/dist/build.json"),
   );
-  paths.push(resolve(root, cargoReceipt.nativeSsr));
+  if (cargoReceipt.schema !== 2)
+    throw Error("Rebuild with `just bench-build` to record every native renderer");
+  // Every native renderer Cargo reported (fusor and Leptos).
+  for (const executable of Object.values(cargoReceipt.nativeSsr))
+    paths.push(resolve(root, executable));
   const artifacts = [];
   for (const path of [...new Set(paths)].sort()) {
     const bytes = await readFile(path);

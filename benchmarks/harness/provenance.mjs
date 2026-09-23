@@ -3,6 +3,8 @@ import { readdir, readFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
 import { root } from "./server.mjs";
 // Fingerprint source and lockfiles, not timestamps, generated outputs, or results.
+// benchmarks/workloads includes the isolated Leptos workspace: its manifests,
+// Cargo.lock, build script, pages and sources.
 export async function sourceHash() {
   const paths = [];
   async function visit(path) {
@@ -22,6 +24,9 @@ export async function sourceHash() {
     "benchmarks/package-lock.json",
     "benchmarks/build.mjs",
     "benchmarks/build-all.mjs",
+    // The harness measures the frameworks this registry defines.
+    "benchmarks/schemas/full-protocol.json",
+    "benchmarks/tools/lib/protocol.mjs",
   ])
     paths.push(resolve(root, name));
   const hash = createHash("sha256");

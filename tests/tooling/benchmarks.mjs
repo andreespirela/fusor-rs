@@ -3,8 +3,14 @@ import { readFile, mkdir } from "node:fs/promises";
 import { chromium, firefox, webkit } from "playwright";
 import { createSiteServer, root } from "../../benchmarks/harness/server.mjs";
 import { resolve } from "node:path";
+import { frameworks } from "../../benchmarks/tools/lib/protocol.mjs";
 const report = JSON.parse(
   await readFile(resolve(root, "apps/benchmarks/public/results.json"), "utf8"),
+);
+// Columns for the frameworks this report measured, in display order. A report
+// from an earlier protocol hides later frameworks' columns.
+const measured = frameworks.filter((framework) =>
+  report.results.some((row) => row.framework === framework),
 );
 const server = createSiteServer();
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -30,7 +36,15 @@ try {
       () => document.querySelector(".load-status")?.hidden,
     );
     await page.locator(".run-meta").waitFor();
-    assert.equal(await page.locator(".results thead th").count(), 7);
+    assert.equal(await page.locator(".results thead th").count(), 8);
+    assert.equal(
+      await page.locator(".results thead th:not([hidden])").count(),
+      measured.length + 1,
+    );
+    assert.equal(
+      await page.locator(".results tbody tr").first().locator("td:not([hidden])").count(),
+      measured.length,
+    );
     const fusorHeader = await page.locator(".results thead th").nth(1).textContent();
     assert.match(fusorHeader, /fusor/);
     assert.doesNotMatch(fusorHeader, /unknown/);
@@ -93,11 +107,11 @@ try {
     const swaps = await page
       .locator(".results tbody tr")
       .filter({ hasText: "Swap two" })
-      .locator(".operation")
+      .locator("td:not([hidden]) .operation")
       .allTextContents();
     assert.deepEqual(
       swaps,
-      ["fusor", "react", "svelte", "solid", "vue", "preact"].map(
+      measured.map(
         (framework) =>
           `${report.results.find((row) => row.framework === framework && row.id === "swap").mutations.moves} moves`,
       ),
@@ -118,6 +132,18 @@ try {
       });
     }
     await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(
+      await page.locator(".mobile-table-hint").textContent(),
+      `Swipe the table to compare all ${measured.length} frameworks →`,
+    );
+    assert(await page.locator(".mobile-table-hint").isVisible());
+    // The comparison table scrolls inside its container instead of the page.
+    assert(
+      await page
+        .locator(".results")
+        .first()
+        .evaluate((table) => table.parentElement.scrollWidth > table.parentElement.clientWidth),
+    );
     assert(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
