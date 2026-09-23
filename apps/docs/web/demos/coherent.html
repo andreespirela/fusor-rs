@@ -1,0 +1,55 @@
+<script
+  type="text/rust"
+  src="../../src/demos/coherent.rs"
+  rust:module="crate::demos::coherent"
+></script>
+<template rust:component="Coherent">
+  <section class="demo-coherent" aria-label="Coherent product view">
+    <div class="segmented" role="group" aria-label="Product">
+      <button
+        aria-pressed='{{ state.product.get() == "Notebook" }}'
+        on:click='state.product.set("Notebook".into())'
+      >
+        Notebook</button
+      ><button
+        aria-pressed='{{ state.product.get() == "Sketchbook" }}'
+        on:click='state.product.set("Sketchbook".into())'
+      >
+        Sketchbook
+      </button>
+    </div>
+    <p class="request-status" role="status">{{ state.status() }}</p>
+    <Async boundary="{{ state.view }}"><article class="product-card">
+      <div class="product-illustration" aria-hidden="true">
+        <span>fusor.</span>
+      </div>
+      <div>
+        <span class="eyebrow">THE STUDIO COLLECTION</span>
+        <h3>{{ state.product.get() }}</h3>
+        <p>Space for an idea, before it becomes a project.</p>
+        <div class="product-values">
+          <div
+          ><ProductRead product="{{ state.product.clone() }}" field="{{ &quot;price&quot; }}" delay="{{ 300 }}" label="{{ &quot;Price&quot; }}"></ProductRead></div>
+          <div
+          ><ProductRead product="{{ state.product.clone() }}" field="{{ &quot;stock&quot; }}" delay="{{ 1100 }}" label="{{ &quot;In stock&quot; }}"></ProductRead></div>
+        </div>
+      </div>
+    </article></Async>
+    <div class="demo-actions">
+      <button
+        on:click="state.view.retry()"
+        disabled="{{ state.view.pending() }}"
+      >
+        Retry reads
+      </button>
+    </div>
+    <p class="demo-caption">
+      Local HTTP fixtures · price 300 ms · stock 1,100 ms
+    </p>
+  </section>
+</template>
+<template rust:component="ProductRead"
+  ><Await value="{{ state.value }}" let="result"><p class="product-value">
+    <span>{{ state.label }}</span><strong>{{ result.trim() }}</strong>
+  </p></Await></template
+>

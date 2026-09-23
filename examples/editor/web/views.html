@@ -1,0 +1,37 @@
+<script type="text/rust" src="../src/views.rs" rust:module="crate::views"></script>
+<template rust:component="EditorPage">
+  <section>
+    <h2>Project 7</h2>
+    <div class="actions">
+      <button id="close-session" on:click="state.store.close()">Close session and discard draft</button>
+      <button id="open-session" on:click="state.store.open()">Open from server observation</button>
+    </div>
+    <p>The session and its save survive leaving this route. Closing the session ends local publication; it cannot undo a server write.</p>
+    <div class="panels">
+      <div id="primary"><Editor store="{{ state.store.clone() }}" name="{{ &quot;Primary view&quot; }}" rust:if="state.store.session.with(Option::is_some)"></Editor></div>
+      <div id="secondary"><Editor store="{{ state.store.clone() }}" name="{{ &quot;Second view&quot; }}" rust:if="state.store.session.with(Option::is_some)"></Editor></div>
+    </div>
+  </section>
+</template>
+<template rust:component="Editor">
+  <form novalidate on:submit="{ event.prevent_default(); state.session.submit(state.store.projects.clone()); }">
+    <h3>{{ state.name }}</h3>
+    <label for="{{ &state.title_id }}">Project title</label>
+    <input class="title" id="{{ &state.title_id }}" type="text" bind:field="state.session.title" aria-invalid="{{ state.session.title.invalid() }}" aria-describedby="{{ &state.title_error }}">
+    <p class="error title-error" id="{{ &state.title_error }}">{{ state.session.title.message() }}</p>
+    <label for="{{ &state.body_id }}">Notes</label>
+    <textarea class="body" id="{{ &state.body_id }}" bind:field="state.session.body"></textarea>
+    <label for="{{ &state.seats_id }}">Seats</label>
+    <input class="seats" id="{{ &state.seats_id }}" type="text" inputmode="numeric" bind:field="state.session.seats" aria-invalid="{{ state.session.seats.invalid() }}" aria-describedby="{{ &state.seats_error }}">
+    <p class="error seats-error" id="{{ &state.seats_error }}">{{ state.session.seats.message() }}</p>
+    <p class="error">{{ state.session.form.validation_message() }}</p>
+    <p>Confirmed: <span class="baseline">{{ state.session.title.baseline() }}</span>, version <span class="version">{{ state.session.version.get() }}</span></p>
+    <button class="save" type="submit" disabled="{{ state.session.save.pending() || state.session.form.status().unresolved() }}">Save</button>
+    <p class="status" aria-live="polite">{{ state.session.form.submission_message() }}</p>
+    <p class="notice" aria-live="polite">{{ state.session.notice.get() }}</p>
+    <button class="reload" type="button" disabled="{{ state.session.save.pending() }}" on:click="state.reload()">Discard draft and load reviewed server version</button>
+  </form>
+</template>
+<template rust:component="Away">
+  <section><h2>Another route</h2><p>Your editing session remains in the app. An active save can finish while its HTML views are unmounted.</p></section>
+</template>

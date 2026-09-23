@@ -1,0 +1,13 @@
+<script type="text/rust" src="../src/reader.rs"
+        rust:module="crate::reader"></script>
+
+<template rust:component="Reader">
+  <section class="reader" aria-label="Issue reader">
+    <h2>Loaded from a URL</h2>
+    <p role="status">{{ state.status() }}</p>
+    <p class="issue-text" aria-busy="{{ state.data.with(|s| s.is_loading()) }}">
+      {{ state.text() }}
+    </p>
+    <button on:click="state.data.refresh()">Reload / retry</button>
+  </section>
+</template>

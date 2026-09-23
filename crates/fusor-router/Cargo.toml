@@ -1,0 +1,28 @@
+[package]
+name = "fusor-router"
+description = "Typed routes and URLs with History API navigation for fusor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fusor", "router", "routing", "wasm", "web"]
+categories = ["wasm", "web-programming"]
+
+[features]
+default = []
+browser = ["fusor-core/dom", "dep:wasm-bindgen", "dep:js-sys", "dep:web-sys"]
+
+[dependencies]
+fusor-core.workspace = true
+percent-encoding = "=2.3.2"
+form_urlencoded = "=1.2.2"
+wasm-bindgen = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true, features = ["Window", "Document", "Element", "Node", "Event", "EventTarget", "MouseEvent", "HtmlAnchorElement", "HtmlElement", "History", "Location", "Url", "FocusOptions", "console"] }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

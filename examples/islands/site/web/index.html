@@ -1,0 +1,17 @@
+<script type="text/rust" src="../src/main.rs" rust:module="crate"></script>
+<html lang="en" rust:component="Page" rust:render="server"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Selective activation · fusor</title>
+<style>body{font:16px/1.7 system-ui;max-width:64rem;margin:3rem auto;padding:1rem;color:#19281d}input,textarea,button{font:inherit}label{display:block;margin:.7rem 0}form,.designer{padding:1.5rem;border:1px solid #b7c7bc;border-radius:12px;margin:1rem 0}[aria-busy=true]{opacity:.65}iframe{display:none}</style>
+</head><body><main>
+  <h1>{{ state.title }}</h1>
+  <p>This page already contains product data. Each interactive unit is loaded separately.</p>
+  <Cart hydrate="manual" hydrate:id="cart-one"
+        product_id="{{ 9_007_199_254_740_993 }}" title="A precise Rust integer" quantity="1"></Cart>
+  <Cart hydrate="manual" hydrate:id="cart-two"
+        product_id="{{ 42 }}" title="A separate component instance" quantity="2"></Cart>
+  <button type="button" id="open-designer" hydrate:target="designer">Open designer</button>
+  <Designer hydrate="interaction" hydrate:id="designer"
+            product_id="{{ 42 }}" title="Configure your product"></Designer>
+  <iframe name="native-result" title="Native form response"></iframe>
+</main></body></html>
+<template rust:component="DesignerPreview" rust:render="server"><section class="preview"><h2>{{ state.title }}</h2><p>Choose Open designer to download the interactive designer.</p></section></template>

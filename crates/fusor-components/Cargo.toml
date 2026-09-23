@@ -1,0 +1,23 @@
+[package]
+name = "fusor-components"
+description = "Built-in fusor template tags: App, Children, ForEach, If, Match, Async, Await and Router"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fusor", "wasm", "web", "html", "components"]
+categories = ["wasm", "web-programming", "gui"]
+
+[features]
+default = []
+browser = ["fusor-core/dom"]
+
+[dependencies]
+fusor-core.workspace = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

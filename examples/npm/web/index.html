@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fusor native JavaScript and Web Components</title>
+</head>
+<body>
+  <App state="{{ App::new() }}">
+    <script type="module" src="./app.js"></script>
+    <main on:utility-result="state.utility_result(event)" on:animation-ready="state.play.set(true)">
+      <h1>Ordinary JavaScript, Rust state</h1>
+      <p>Direct library imports run alongside this App. The chart is an optional reusable component.</p>
+      <p id="result">{{ state.result.get() }}</p>
+      <sl-button id="increment" on:click="state.count.update(|n| *n += 1)">Count {{ state.count.get() }}</sl-button>
+      <button id="promise">Use an ordinary JavaScript Promise</button>
+      <section>
+        <h2>Chart.js</h2>
+        <p>One chart observes Rust inputs and is destroyed when its component is removed.</p>
+        <button id="toggle-chart" on:click="state.chart_visible.update(|visible| *visible = !*visible)">Toggle chart</button>
+        <ChartPanel rust:if="state.chart_visible.get()" count="{{ state.count.clone() }}"></ChartPanel>
+      </section>
+      <section>
+        <h2>Late Web Component registration</h2>
+        <p>Native properties retain object identity. Dynamic import registers this element on demand.</p>
+        <button id="register">Register and play Shoelace animation</button>
+        <sl-animation id="animation" prop:keyframes="state.frames.get()" prop:play="state.play.get()" prop:duration="80.0" prop:iterations="1.0" on:sl-finish="{ state.finished.update(|n| *n += 1); state.play.set(false); }">
+          <div id="tile">Rust properties</div>
+        </sl-animation>
+        <p>Completed: <output id="finished">{{ state.finished.get() }}</output></p>
+      </section>
+    </main>
+  </App>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Independent bridge review</title></head><body>
+<App state="{{ App::new(owner) }}"><main on:typed-u32="state.u32_detail(event)" on:typed-list="state.list_detail(event)">
+  <button id="change" on:click="state.value.set(2.0)">Change</button>
+  <button id="unrelated" on:click="state.other.set(20.0)">Unrelated</button>
+  <button id="dispose" on:click="state.value.set(4.0)">Self-dispose</button>
+  <button id="remount" on:click="state.show.set(true)">Remount</button>
+  <button id="reset" on:click="state.value.set(1.0)">Reset value</button>
+  <output id="observed">{{ state.observed.get() }}</output>
+  <output id="typed">{{ state.typed.get() }}</output>
+  <NoInputs></NoInputs>
+  <EmptyInputs></EmptyInputs>
+  <Probe value="{{ state.value.clone() }}" other="{{ state.other.clone() }}"
+         show="{{ state.show.clone() }}" observed="{{ state.observed.clone() }}"
+         rust:if="state.show.get()"></Probe>
+</main></App>
+<template rust:component="Probe">
+  <script type="module" src="./probe.js"></script>
+  <section id="probe" on:probe-update="state.from_js(event)"><span>Probe mounted</span></section>
+</template>
+<template rust:component="NoInputs">
+  <script type="module" src="./empty.js"></script>
+  <aside id="no-inputs">Module without a derive</aside>
+</template>
+<template rust:component="EmptyInputs">
+  <script type="module" src="./empty.js"></script>
+  <aside id="empty-inputs">Module with an empty derive</aside>
+</template>
+</body></html>

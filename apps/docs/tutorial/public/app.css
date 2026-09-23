@@ -1,0 +1,37 @@
+body {
+  max-width: 48rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  font:
+    17px/1.6 system-ui,
+    sans-serif;
+  color: #172322;
+}
+button,
+input {
+  font: inherit;
+  padding: 0.3rem 0.6rem;
+  margin: 0.2rem;
+}
+button {
+  cursor: pointer;
+}
+.details,
+.reader,
+li {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #edf7f1;
+  border-radius: 0.4rem;
+}
+label {
+  display: block;
+}
+nav {
+  display: flex;
+  flex-wrap: wrap;
+}
+:focus-visible {
+  outline: 2px solid #087c55;
+  outline-offset: 3px;
+}

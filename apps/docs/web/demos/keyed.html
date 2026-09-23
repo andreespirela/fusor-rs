@@ -1,0 +1,49 @@
+<script
+  type="text/rust"
+  src="../../src/demos/keyed.rs"
+  rust:module="crate::demos::keyed"
+></script>
+<template rust:component="Keyed">
+  <section class="demo-reading" aria-label="Keyed reading list">
+    <div class="demo-toolbar">
+      <h3>Your reading list</h3>
+      <div>
+        <button
+          on:click="state.books.update(|books| books.reverse())"
+          disabled="{{ state.books.get().len() &lt; 2 }}"
+        >
+          Reverse order</button
+        ><button
+          on:click="state.add()"
+          disabled="{{ state.books.get().len() >= 8 }}"
+        >
+          Add a book
+        </button>
+      </div>
+    </div>
+    <p class="demo-empty" hidden="{{ !state.books.get().is_empty() }}">
+      A clear shelf. Add a book to start again.
+    </p>
+    <ul class="reading-list"><ForEach items="{{ state.books.get() }}" key="{{ |book| book.id }}">
+<li data-book="{{ item.get().id }}">
+    <span class="book-number">{{ index.get() + 1 }}</span>
+    <div>
+      <strong>{{ item.get().title }}</strong
+      ><label
+        >Personal note<input
+          placeholder="Keep a thought with this book…"
+          maxlength="120"
+      /></label>
+    </div>
+    <button
+      class="remove-book"
+      aria-label='{{ format!("Remove {}", item.get().title) }}'
+      on:click="state.remove(item.get().id)"
+    >
+      ×
+    </button>
+  </li>
+</ForEach></ul>
+  </section>
+</template>
+

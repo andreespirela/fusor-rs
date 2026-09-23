@@ -1,0 +1,29 @@
+[package]
+name = "fusor-integrations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fusor-core = { workspace = true, features = ["dom", "javascript"] }
+fusor-async = { workspace = true, features = ["browser"] }
+fusor-query = { workspace = true, features = ["browser"] }
+wasm-bindgen.workspace = true
+web-sys = { workspace = true, features = ["Element"] }
+
+[build-dependencies]
+fusor-build.workspace = true
+
+[package.metadata.fusor]
+entry = "web/index.html"
+assets = "public"
+base-path = "/lab/"
+output = "dist"
+
+[package.metadata.fusor.components]
+panel = "web/panel.html"

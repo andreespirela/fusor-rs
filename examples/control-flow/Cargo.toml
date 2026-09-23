@@ -1,0 +1,21 @@
+[package]
+name = "fusor-control-flow"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+[lib]
+crate-type = ["cdylib", "rlib"]
+[dependencies]
+fusor-core = { workspace = true, features = ["dom", "islands"] }
+fusor-components = { workspace = true, features = ["browser"] }
+fusor-async = { workspace = true, features = ["browser"] }
+fusor-islands.workspace = true
+wasm-bindgen.workspace = true
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+fusor-server.workspace = true
+[build-dependencies]
+fusor-build.workspace = true
+[package.metadata.fusor]
+entry = "web/index.html"

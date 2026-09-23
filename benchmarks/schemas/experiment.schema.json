@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Benchmark experiment record",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "createdAt",
+    "status",
+    "selection",
+    "notes",
+    "events",
+    "evidence"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,95}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "open",
+        "complete",
+        "failed"
+      ]
+    },
+    "selection": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "reason",
+            "selectedAt"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "selectedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      ]
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/note"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/digest"
+          },
+          {
+            "type": "object",
+            "required": [
+              "path",
+              "kind"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "object",
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "note": {
+      "type": "object",
+      "required": [
+        "title",
+        "format",
+        "body"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "hypothesis",
+            "decision",
+            "observation",
+            "research"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "enum": [
+            "text",
+            "markdown"
+          ]
+        },
+        "body": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

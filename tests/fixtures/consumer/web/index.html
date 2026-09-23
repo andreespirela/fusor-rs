@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Consumer contract</title></head>
+  <body>
+    <main rust:component="Application">
+      <h1 title="Count {{ state.count.get() }}: {{ state.name.get() }}">{{ state.name.get() }}</h1>
+      <input bind:value="state.name">
+      <input type="checkbox" bind:checked="state.enabled">
+      <input value="{{ state.count.get() }}" checked="{{ state.enabled.get() }}">
+      <button disabled="{{ state.count.get() == 0 }}"
+              on:click="{ state.count.set(0); state.name.set(String::new()); }">Reset</button>
+      <p class="status" class:active="state.enabled.get()">
+        {{ { let n = state.count.get(); if n &lt; 3 { format!("{} {}", n, r#"}}"#) } else { String::from("large") } } }}
+      </p>
+      <p>{{ {
+        fn borrow&lt;'a>(value: &amp;'a str) -> &amp;'a str { value }
+        let r#type = (1..=3).map(|n| n &lt;&lt; 1).sum::&lt;i32>();
+        format!("{} {}", borrow("🦀"), r#type)
+      } }}</p>
+      <ul><ForEach items="{{ state.items.get() }}"
+          key="{{ |item| item.id }}">
+        <Row item="{{ item.clone() }}"></Row>
+      </ForEach></ul>
+      <Match value="{{ state.items.get().first().cloned() }}">
+        <Case pattern="Some(selected)"><If condition="{{ selected.get().id > 0 }}">
+          <p>{{ selected.get().name }}</p>
+        </If></Case>
+        <Case pattern="None"></Case>
+      </Match>
+    </main>
+    <template rust:component="Row">
+      <li>{{ state.item.with(|item| item.name.clone()) }}</li>
+    </template>
+    <script type="text/rust">
+use fusor::prelude::*;
+use std::cell::RefCell;
+use wasm_bindgen::prelude::*;
+
+#[derive(Clone, PartialEq)]
+struct Item { id: u32, name: String }
+struct Row { item: Memo<Item> }
+impl fusor::dom::FromInputs for Row {
+    type Inputs = Self;
+    fn from_inputs(inputs: Self, _owner: OwnerHandle) -> Result<Self, JsValue> { Ok(inputs) }
+}
+struct Application {
+    count: Signal<i32>,
+    name: Signal<String>,
+    enabled: Signal<bool>,
+    items: Signal<Vec<Item>>,
+}
+
+pub fn bind_native_nodes(mut scope: Scope) -> Result<Scope, JsValue> {
+    let element = fusor::dom::element("button")?;
+    scope.on(&element, "click", |_| {})?;
+    let text = fusor::dom::document()?.create_text_node("");
+    scope.text_node(&text, || "Native text")?;
+    Ok(scope)
+}
+
+thread_local! {
+    static APP: RefCell<Option<Scope>> = const { RefCell::new(None) };
+}
+
+#[wasm_bindgen(start)]
+pub fn start() -> Result<(), JsValue> {
+    let component = Application {
+        count: signal(0), name: signal("Ready".into()), enabled: signal(true),
+        items: signal(vec![Item { id: 1, name: "External application".into() }]),
+    }.mount()?;
+    APP.with(|app| *app.borrow_mut() = Some(component));
+    Ok(())
+}
+    </script>
+  </body>
+</html>

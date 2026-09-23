@@ -1,0 +1,16 @@
+[package]
+name = "fusor-npm"
+description = "Internal to the fusor CLI: bundles an application's npm modules. Not for direct use"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fusor", "npm", "esbuild", "bundler"]
+categories = ["development-tools::build-utils"]
+
+[dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

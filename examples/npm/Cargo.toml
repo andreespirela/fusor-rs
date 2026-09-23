@@ -1,0 +1,32 @@
+[package]
+name = "fusor-npm-example"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fusor-components = { path = "../../crates/fusor-components", features = ["browser"] }
+fusor-core = { path = "../../crates/fusor-core", features = ["dom", "javascript"] }
+wasm-bindgen = "=0.2.117"
+js-sys = "=0.3.94"
+web-sys = { version = "=0.3.94", features = ["CustomEvent", "HtmlCanvasElement"] }
+
+[build-dependencies]
+fusor-build = { path = "../../crates/fusor-build" }
+
+[package.metadata.fusor]
+entry = "web/index.html"
+dev-refresh = false
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

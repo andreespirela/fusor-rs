@@ -1,0 +1,102 @@
+<script
+  type="text/rust"
+  src="../../src/demos/comparison.rs"
+  rust:module="crate::demos::comparison"
+></script>
+<template rust:component="Comparison">
+  <section
+    class="demo-comparison"
+    aria-label="Async and coherent async comparison"
+  >
+    <p class="comparison-hint">
+      Choose a product. The price loads faster than the stock.
+    </p>
+    <div class="comparison-controls">
+      <div
+        class="segmented"
+        role="group"
+        aria-label="Choose a product for both panels"
+      >
+        <button
+          aria-pressed='{{ state.selection.get() == "Notebook" }}'
+          on:click='state.selection.set("Notebook")'
+        >
+          Notebook
+        </button>
+        <button
+          aria-pressed='{{ state.selection.get() == "Sketchbook" }}'
+          on:click='state.selection.set("Sketchbook")'
+        >
+          Sketchbook
+        </button>
+      </div>
+    </div>
+    <div class="comparison-panels">
+      <section
+        class="comparison-panel independent-panel"
+        aria-label="Independent async results"
+      >
+        <header>
+          <h3>Async</h3>
+          <p>Updates separately</p>
+        </header>
+        <p class="comparison-status" role="status">
+          {{ state.async_status() }}
+        </p>
+        <div
+          class="independent-result"
+          data-field="price"
+          aria-busy="{{ state.price.with(|s| s.is_loading()) }}"
+        >
+          <span>Price</span><strong>{{ value(&state.price) }}</strong
+          ><small>{{ provenance(&state.price) }}</small>
+        </div>
+        <div
+          class="independent-result"
+          data-field="stock"
+          aria-busy="{{ state.stock.with(|s| s.is_loading()) }}"
+        >
+          <span>In stock</span><strong>{{ value(&state.stock) }}</strong
+          ><small>{{ provenance(&state.stock) }}</small>
+        </div>
+      </section>
+      <section
+        class="comparison-panel coherent-panel"
+        aria-label="Coherent async results"
+      >
+        <header>
+          <h3>Coherent async</h3>
+          <p>Updates together</p>
+        </header>
+        <p class="comparison-status" role="status">
+          {{ state.coherent_status() }}
+        </p>
+        <Async boundary="{{ state.view }}"><div class="comparison-published">
+          <div class="coherent-result">
+            <div
+            ><CoherentField selection="{{ state.selection.clone() }}" field="{{ &quot;price&quot; }}" label="{{ &quot;Price&quot; }}"></CoherentField></div>
+            <small>{{ state.selection.get() }}</small>
+          </div>
+          <div class="coherent-result">
+            <div
+            ><CoherentField selection="{{ state.selection.clone() }}" field="{{ &quot;stock&quot; }}" label="{{ &quot;In stock&quot; }}"></CoherentField></div>
+            <small>{{ state.selection.get() }}</small>
+          </div>
+        </div></Async>
+      </section>
+    </div>
+    <p class="demo-caption">Artificial delays: price 0.3 s · stock 1.8 s.</p>
+    <nav class="comparison-links" aria-label="Async guides">
+      <a class="text-link" data-fusor-link href="/docs/async-data"
+        >Async data guide →</a
+      ><a class="text-link" data-fusor-link href="/docs/coherent-async"
+        >Coherent async guide →</a
+      >
+    </nav>
+  </section>
+</template>
+<template rust:component="CoherentField">
+  <Await value="{{ state.data }}" let="result"><p class="comparison-field">
+    <span>{{ state.label }}</span><strong>{{ result.as_str() }}</strong>
+  </p></Await>
+</template>

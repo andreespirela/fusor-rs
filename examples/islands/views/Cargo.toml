@@ -1,0 +1,22 @@
+[package]
+name = "catalog-views"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+[dependencies]
+fusor-components.workspace = true
+catalog-types = { path = "../types" }
+fusor-core = { workspace = true, features = ["dom"] }
+fusor-islands.workspace = true
+fusor-std = { workspace = true, features = ["forms"] }
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+fusor-server.workspace = true
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+fusor-core = { workspace = true, features = ["islands"] }
+fusor-std = { workspace = true, features = ["browser"] }
+[build-dependencies]
+fusor-build.workspace = true
+[package.metadata.fusor]
+entry = "web/cart.html"

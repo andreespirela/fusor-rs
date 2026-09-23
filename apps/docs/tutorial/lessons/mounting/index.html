@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Mount from Rust</title></head>
+  <body>
+    <div id="counter-host"></div>
+    <template rust:component="Counter">
+      <section>
+        <p>Count: {{ state.count.get() }}</p>
+        <button on:click="state.count.update(|n| *n += 1)">Add one</button>
+      </section>
+    </template>
+  </body>
+</html>

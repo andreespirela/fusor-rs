@@ -1,0 +1,8 @@
+<template rust:component="Dashboard">
+  <section>
+    <h2>{{ state.user.get().name }}’s dashboard</h2>
+    <button on:click="state.clicks.update(|count| *count += 1)">
+      Clicks: {{ state.clicks.get() }}
+    </button>
+  </section>
+</template>

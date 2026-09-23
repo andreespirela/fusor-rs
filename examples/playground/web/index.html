@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f3ed" />
+    <meta
+      name="description"
+      content="Real Rust. Ordinary HTML. A reactive WebAssembly playground with reactive HTML bindings."
+    />
+    <title>fusor — Rust, at the front.</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./startup.js" defer></script>
+
+    <script type="text/rust" id="app-rust">
+// Ordinary Rust, embedded directly in this HTML document.
+use fusor::prelude::*;
+use std::cell::{Cell, RefCell};
+use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
+use web_sys::HtmlInputElement;
+
+thread_local! {
+    static APP: RefCell<Option<Scope>> = const { RefCell::new(None) };
+}
+
+#[derive(Clone, PartialEq)]
+struct Task {
+    id: u32,
+    title: String,
+    done: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Filter {
+    All,
+    Active,
+    Done,
+}
+
+#[wasm_bindgen(start)]
+pub fn start() -> Result<(), JsValue> {
+    std::panic::set_hook(Box::new(|info| {
+        web_sys::console::error_1(&info.to_string().into())
+    }));
+    mount()
+}
+
+/// Explicit lifecycle exports also make embedding in another app straightforward.
+#[wasm_bindgen]
+pub fn unmount() {
+    APP.with(|app| {
+        app.borrow_mut().take();
+    });
+}
+
+#[wasm_bindgen]
+pub fn mount() -> Result<(), JsValue> {
+    unmount();
+    let mut ui = Scope::at("#playground")?;
+    ui.adopt(Counter::new().mount()?);
+    ui.adopt(Tasks::new().mount()?);
+    ui.mount_child("#demo-grid", Greeting::new().mount()?)?;
+    ui.select("#runtime-state")?
+        .set_text_content(Some("WebAssembly connected"));
+    ui.root().set_attribute("data-ready", "true")?;
+    APP.with(|app| *app.borrow_mut() = Some(ui));
+    Ok(())
+}
+    </script>
+
+  </head>
+  <body>
+    <div class="site-shell" id="playground" data-ready="false">
+      <header class="site-header">
+        <a class="wordmark" href="#" aria-label="fusor home"
+          ><img class="brand-mark" src="./favicon.svg" width="38" height="38" alt="" />fusor<span class="version">0.1</span></a
+        >
+        <nav aria-label="Main navigation">
+          <a href="#play">Playground <span aria-hidden="true">↗</span></a
+          ><a href="#approach"
+            >The approach <span aria-hidden="true">↗</span></a
+          >
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <p class="eyebrow">
+              <span class="tiny-square"></span> A SMALL EXPERIMENT. A REAL RUST
+              RUNTIME.
+            </p>
+            <h1 id="hero-title">
+              Rust, at<br />the
+              <span class="front-word"
+                >front<span class="accent-period">.</span></span
+              >
+            </h1>
+            <p class="hero-description">
+              The language you trust, inside your HTML.<br />Reactive state. Actual Rust.
+            </p>
+            <a class="hero-link" href="#play"
+              >Try the live playground <span aria-hidden="true">↓</span></a
+            >
+          </div>
+          <div class="code-window" aria-label="Rust code example">
+            <div class="code-title">
+              <span><span class="file-dot"></span>index.html</span
+              ><span>RUST INSIDE HTML</span>
+            </div>
+            <pre><code>&lt;script type="text/rust"&gt;
+struct Counter {
+    count: Signal&lt;i32&gt;,
+}
+&lt;/script&gt;
+
+&lt;section rust:component="Counter"&gt;
+  &lt;p&gt;Count: {{ state.count.get() }}&lt;/p&gt;
+  &lt;button on:click="state.count.update(|n| *n += 1)"&gt;
+    Increment
+  &lt;/button&gt;
+&lt;/section&gt;</code></pre>
+            <div class="code-footer">
+              <span
+                >HTML + Rust <span aria-hidden="true">→</span> WebAssembly
+                <span aria-hidden="true">→</span> DOM</span
+              ><span class="code-spark" aria-hidden="true">✳</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="playground" id="play" aria-labelledby="play-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">01 / THE PLAYGROUND</p>
+              <h2 id="play-title">Go ahead. Change something.</h2>
+            </div>
+            <div class="runtime-status" role="status">
+              <span></span
+              ><span id="runtime-state">Connecting WebAssembly…</span>
+            </div>
+          </div>
+          <div id="load-error" class="error-message" role="alert" hidden></div>
+          <noscript
+            ><p class="error-message">
+              Enable JavaScript to load the compiled Rust WebAssembly module.
+            </p></noscript
+          >
+          <div class="demo-grid" id="demo-grid">
+            <article class="counter-card" rust:component="Counter">
+              <div class="card-heading">
+                <span class="eyebrow">REACTIVE STATE</span
+                ><span class="card-index">01</span>
+              </div>
+              <div class="counter-display">
+                <span class="counter-label">One signal. Every view.</span
+                ><output id="count" aria-live="polite" title="Count: {{ state.count.get() }}; double: {{ state.doubled.get() }}">{{ state.count.get() }}</output>
+                <div class="counter-buttons">
+                  <button
+                    id="decrement"
+                    class="step-button"
+                    aria-label="Decrease counter"
+                    on:click="state.change(-1)"
+                  >
+                    −</button
+                  ><button
+                    id="increment"
+                    class="step-button"
+                    aria-label="Increase counter"
+                    on:click="state.change(1)"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <div class="derived-values">
+                <div><span>count × 2</span><output id="doubled">{{ state.doubled.get() }}</output></div>
+                <div><span>parity</span><output id="parity">{{ if state.count.get() % 2 == 0 { "Even" } else { "Odd" } }}</output></div>
+              </div>
+              <div class="step-control">
+                <label for="step">Step <output id="step-value">{{ state.step.get() }}</output></label
+                ><input
+                  id="step"
+                  type="range"
+                  min="1"
+                  max="10"
+                  value="1"
+                  bind:value="state.step"
+                /><button id="reset" class="text-button" disabled="{{ state.count.get() == 0 }}" on:click="state.count.set(0)">
+                  Reset <span aria-hidden="true">↺</span>
+                </button>
+              </div>
+              <div class="card-note" id="counter-note">
+                <span class="live-dot"></span>Count: {{ state.count.get() }} · <strong>Same DOM.</strong>
+              </div>
+            </article>
+
+
+    <script type="text/rust" id="counter-rust">
+struct Counter {
+    count: Signal<i32>,
+    step: Signal<String>,
+    doubled: Derived<i32>,
+}
+
+impl Counter {
+    fn new() -> Self {
+        let count = signal(0_i32);
+        let step = signal("1".to_owned());
+        let doubled = derived({
+            let count = count.clone();
+            move || count.get() * 2
+        });
+        Self { count, step, doubled }
+    }
+
+    fn change(&self, direction: i32) {
+        let amount = self.step.get().parse::<i32>().unwrap_or(1).clamp(1, 10);
+        self.count.update(|count| *count = (*count + direction * amount).clamp(-9999, 9999));
+    }
+}
+    </script>
+
+            <article class="tasks-card" rust:component="Tasks">
+              <div class="card-heading">
+                <span class="eyebrow">RUST MEETS HTML</span
+                ><span class="card-index">02</span>
+              </div>
+              <div class="tasks-heading">
+                <h3>A little list. All Rust.</h3>
+                <p id="task-progress" aria-live="polite">{{ state.completed() }} of {{ state.tasks.with(Vec::len) }} complete</p>
+              </div>
+              <div class="progress-track" aria-hidden="true">
+                <div id="progress-bar" style="width: {{ state.progress() }}%"></div>
+              </div>
+              <form id="task-form" autocomplete="off" on:submit="{ event.prevent_default(); state.add(); }">
+                <label class="sr-only" for="task-input">New task</label
+                ><input
+                  id="task-input"
+                  type="text"
+                  placeholder="What will you build?"
+                  maxlength="200"
+                  bind:value="state.draft"
+                /><button
+                  id="add-task"
+                  type="submit"
+                  aria-label="Add task"
+                  disabled="{{ state.draft.with(|text| text.trim().is_empty()) }}"
+                >
+                  +
+                </button>
+              </form>
+              <div class="task-filters" role="group" aria-label="Task controls">
+                <button id="filter-all" aria-pressed="{{ state.filter.get() == Filter::All }}" on:click="state.filter.set(Filter::All)">All</button
+                ><button id="filter-active" aria-pressed="{{ state.filter.get() == Filter::Active }}" on:click="state.filter.set(Filter::Active)">Active</button
+                ><button id="filter-done" aria-pressed="{{ state.filter.get() == Filter::Done }}" on:click="state.filter.set(Filter::Done)">Done</button
+                ><button
+                  id="reverse-tasks"
+                  aria-label="Reverse task order"
+                  title="Reverse task order"
+                  on:click="state.tasks.update(|tasks| tasks.reverse())"
+                >
+                  ↕
+                </button>
+              </div>
+              <ul id="task-list" class="task-list" aria-label="Tasks"><ForEach items="{{ state.visible() }}" key="{{ |item| item.id }}">
+<TaskRow task="{{ item.clone() }}" tasks="{{ state.tasks.clone() }}"></TaskRow>
+</ForEach></ul>
+              <p id="empty-tasks" class="empty-tasks" hidden="{{ !state.visible().is_empty() }}">
+                No tasks here. A fresh start.
+              </p>
+              <div class="task-footer">
+                <span>Stable keys. Real DOM nodes.</span
+                ><button id="clear-completed" class="text-button" disabled="{{ state.completed() == 0 }}" on:click="state.tasks.update(|tasks| tasks.retain(|task| !task.done))">
+                  Clear completed
+                </button>
+              </div>
+            </article>
+
+
+    <script type="text/rust" id="tasks-rust">
+struct Tasks {
+    tasks: Signal<Vec<Task>>,
+    draft: Signal<String>,
+    filter: Signal<Filter>,
+    next_id: Cell<u32>,
+}
+
+impl Tasks {
+    fn new() -> Self {
+        Self {
+            tasks: signal(vec![
+                Task { id: 0, title: "Write actual Rust".into(), done: true },
+                Task { id: 1, title: "Make the HTML reactive".into(), done: true },
+                Task { id: 2, title: "Build something for the web".into(), done: false },
+            ]),
+            draft: signal(String::new()),
+            filter: signal(Filter::All),
+            next_id: Cell::new(3),
+        }
+    }
+
+    fn completed(&self) -> usize {
+        self.tasks.with(|tasks| tasks.iter().filter(|task| task.done).count())
+    }
+
+    fn progress(&self) -> usize {
+        (self.completed() * 100).checked_div(self.tasks.with(Vec::len)).unwrap_or(0)
+    }
+
+    fn visible(&self) -> Vec<Task> {
+        let filter = self.filter.get();
+        self.tasks.with(|tasks| tasks.iter().filter(|task| match filter {
+            Filter::All => true,
+            Filter::Active => !task.done,
+            Filter::Done => task.done,
+        }).cloned().collect())
+    }
+
+    fn add(&self) {
+        let title = self.draft.get().trim().to_owned();
+        if title.is_empty() { return; }
+        let id = self.next_id.get();
+        self.next_id.set(id.checked_add(1).expect("task ID space exhausted"));
+        self.tasks.update(|tasks| tasks.push(Task { id, title, done: false }));
+        self.draft.set(String::new());
+    }
+}
+
+struct TaskRow {
+    task: fusor::Memo<Task>,
+    tasks: Signal<Vec<Task>>,
+}
+
+impl TaskRow {
+    fn toggle(&self, event: web_sys::Event) {
+        let input = event.current_target().unwrap().dyn_into::<HtmlInputElement>().unwrap();
+        let id = self.task.with(|task| task.id);
+        self.tasks.update(|tasks| {
+            if let Some(task) = tasks.iter_mut().find(|task| task.id == id) {
+                task.done = input.checked();
+            }
+        });
+    }
+
+    fn remove(&self) {
+        let id = self.task.with(|task| task.id);
+        self.tasks.update(|tasks| tasks.retain(|task| task.id != id));
+    }
+}
+    
+impl fusor::dom::FromInputs for TaskRow {
+    type Inputs = Self;
+    fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> { Ok(inputs) }
+}
+</script>
+
+            <!-- The third card clones ordinary HTML from the template below. -->
+          </div>
+        </section>
+
+        <section
+          class="approach"
+          id="approach"
+          aria-labelledby="approach-title"
+        >
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">02 / UNDER THE HOOD</p>
+              <h2 id="approach-title">A small bridge. A familiar language.</h2>
+            </div>
+            <span class="approach-mark" aria-hidden="true">{ }</span>
+          </div>
+          <div class="principles">
+            <article>
+              <span class="principle-number">01</span>
+              <h3>Rust stays Rust.</h3>
+              <p>
+                Functions, structs, closures, and Cargo. Rust code lives inside
+                HTML script blocks and goes straight to rustc.
+              </p>
+              <code>index.html → cargo → app.wasm</code>
+            </article>
+            <article>
+              <span class="principle-number">02</span>
+              <h3>HTML stays HTML.</h3>
+              <p>
+                Put expressions in text, attributes, and events. The compiler
+                connects your elements to their Rust state.
+              </p>
+              <code>Count: {{ state.count.get() }}</code>
+            </article>
+            <article>
+              <span class="principle-number">03</span>
+              <h3>State does the wiring.</h3>
+              <p>
+                Read a signal in a binding. Its dependencies are tracked. Write
+                to it, and the view updates.
+              </p>
+              <code>count.set(count.get() + 1)</code>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <span
+          ><strong>fusor</strong>
+          <span class="footer-separator">/</span> An early foundation for Rust
+          on the web.</span
+        ><span
+          >Built with Rust. Delivered as Wasm.
+          <span class="footer-symbol" aria-hidden="true">↗</span></span
+        >
+      </footer>
+    </div>
+
+    <template id="greeting-template" rust:component="Greeting">
+      <article class="input-card">
+        <div>
+          <p class="eyebrow">TWO-WAY BINDING · RUST INSIDE HTML</p>
+          <h3 id="greeting">{{ state.message() }}</h3>
+          <p>Your input becomes Rust state. Your HTML follows.</p>
+        </div>
+        <div class="greeting-control">
+          <label for="greeting-input">MAKE IT YOURS</label>
+          <input id="greeting-input" type="text" maxlength="80" spellcheck="false" bind:value="state.name">
+          <label class="greeting-toggle"><input id="greeting-default" type="checkbox" bind:checked="state.use_default"> Use the default greeting</label>
+          <span><code>Signal&lt;String&gt;</code><span aria-hidden="true">↔</span><code>&lt;input&gt;</code></span>
+        </div>
+      </article>
+    </template>
+
+    <script type="text/rust" id="greeting-rust">
+struct Greeting {
+    name: Signal<String>,
+    use_default: Signal<bool>,
+}
+
+impl Greeting {
+    fn new() -> Self {
+        Self {
+            name: signal("Hello, browser.".to_owned()),
+            use_default: signal(false),
+        }
+    }
+
+    fn message(&self) -> String {
+        if self.use_default.get() {
+            return "Hello, browser.".to_owned();
+        }
+        let name = self.name.get();
+        if name.trim().is_empty() { "Hello, browser.".to_owned() } else { name }
+    }
+}
+    </script>
+
+    <!-- Native HTML. Rust clones this template and binds each row by its key. -->
+    <template id="task-template" rust:component="TaskRow">
+      <li class="task-row" data-task-id="{{ state.task.with(|task| task.id) }}" class:is-done="state.task.with(|task| task.done)">
+        <label><input type="checkbox" checked="{{ state.task.with(|task| task.done) }}" on:change="state.toggle(event)" /><span data-title>{{ state.task.with(|task| task.title.clone()) }}</span></label
+        ><button
+          type="button"
+          data-remove
+          class="remove-task"
+          aria-label="Delete {{ state.task.with(|task| task.title.clone()) }}"
+          on:click="state.remove()"
+        >
+          ×
+        </button>
+      </li>
+    </template>
+  </body>
+</html>

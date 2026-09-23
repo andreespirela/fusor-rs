@@ -1,0 +1,140 @@
+//! Fallible browser setup runs after the complete prepared subtree is valid,
+//! before activating resources. Child commits join their prepared ancestor.
+use super::{JsValue, Scope};
+use crate::{ContextKey, OwnerHandle};
+use std::{
+    cell::{Cell, RefCell},
+    rc::{Rc, Weak},
+};
+
+struct Action {
+    owner: OwnerHandle,
+    ready: Weak<Cell<bool>>,
+    setup: Box<dyn FnOnce() -> Result<(), JsValue>>,
+}
+
+#[derive(Default)]
+pub(super) struct CommitQueue(RefCell<Vec<Action>>);
+
+struct MountContext;
+impl ContextKey for MountContext {
+    type Value = CommitQueue;
+}
+
+impl Scope {
+    pub(super) fn prepare_queue(&mut self, parent: Option<&OwnerHandle>) {
+        self.mount_parent = parent.cloned();
+        if self.owner().is_disposed() {
+            self.mount_queue = None;
+            return;
+        }
+        self.mount_queue = Some(
+            match parent.and_then(|parent| parent.context::<MountContext>()) {
+                Some(queue) => queue,
+                None => {
+                    self.owner()
+                        .provide::<MountContext>(CommitQueue::default())
+                        .expect("fresh component owner");
+                    self.owner()
+                        .context::<MountContext>()
+                        .expect("just provided")
+                }
+            },
+        );
+    }
+
+    /// Internal integration boundary for fallible browser setup. The callback
+    /// must arrange rollback on owner disposal if later setup fails. Captures
+    /// should not keep a disposed component or integration alive.
+    #[doc(hidden)]
+    pub fn before_commit(
+        &mut self,
+        setup: impl FnOnce() -> Result<(), JsValue> + 'static,
+    ) -> Result<(), JsValue> {
+        if self.owner().is_disposed() {
+            return Err(JsValue::from_str("cannot initialize a disposed component"));
+        }
+        if self.owner().is_active() {
+            return setup();
+        }
+        let queue = self.mount_queue.as_ref().expect("prepared component queue");
+        queue.0.borrow_mut().push(Action {
+            owner: self.owner(),
+            ready: Rc::downgrade(&self.mount_ready),
+            setup: Box::new(setup),
+        });
+        Ok(())
+    }
+
+    /// Finish fallible setup without activating the component's resources.
+    /// Used before replacing a previous view.
+    #[doc(hidden)]
+    pub fn finish_prepare(&self) -> Result<(), JsValue> {
+        if self.owner().is_disposed() {
+            return Err(JsValue::from_str("cannot commit a disposed component"));
+        }
+        self.mount_ready.set(true);
+        if self
+            .mount_parent
+            .as_ref()
+            .is_some_and(|parent| !parent.is_active())
+        {
+            return Ok(());
+        }
+        self.finish_prepare_subtree()
+    }
+
+    /// Finish this prepared subtree inside an externally owned transaction.
+    /// Unlike finish_prepare, an inactive parent does not defer fallible setup.
+    /// The caller must keep work inactive until all participants can commit.
+    pub fn finish_prepare_subtree(&self) -> Result<(), JsValue> {
+        if self.owner().is_disposed() {
+            return Err(JsValue::from_str("cannot prepare a disposed subtree"));
+        }
+        self.mount_ready.set(true);
+        if let Some(queue) = &self.mount_queue {
+            let pending = queue.0.take();
+            let (ready, waiting): (Vec<_>, Vec<_>) = pending
+                .into_iter()
+                .filter(|action| !action.owner.is_disposed() && action.ready.strong_count() > 0)
+                .partition(|action| {
+                    action.owner.is_within(&self.owner())
+                        && action.ready.upgrade().is_some_and(|ready| ready.get())
+                });
+            queue.0.borrow_mut().extend(waiting);
+            for action in ready {
+                if !action.owner.is_disposed() {
+                    (action.setup)()?;
+                }
+            }
+        }
+        if self.owner().is_disposed() {
+            return Err(JsValue::from_str(
+                "component disposed during initialization",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Finish browser setup and activate owned work. Prepared ancestors still
+    /// gate activation. Failure is returned to the mounting caller.
+    pub fn try_commit(&self) -> Result<(), JsValue> {
+        // Reconciliation revisits retained scopes. An active scope has already
+        // prepared and committed, but new descendants can share its setup queue.
+        // Only skip preparation when there is no pending setup anywhere in it.
+        if self.owner().is_active()
+            && self
+                .mount_queue
+                .as_ref()
+                .is_none_or(|queue| queue.0.borrow().is_empty())
+        {
+            return Ok(());
+        }
+        self.finish_prepare()?;
+        self.owner.commit();
+        if self.owner().is_disposed() {
+            return Err(JsValue::from_str("component disposed during activation"));
+        }
+        Ok(())
+    }
+}

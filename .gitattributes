@@ -1,0 +1,2 @@
+# Experiment receipts hash exact bytes, including captured tool output and patches.
+benchmarks/results/optimization-*/** -text -whitespace

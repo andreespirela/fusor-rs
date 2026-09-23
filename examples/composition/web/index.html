@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fusor — context, content and cached values</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { font: 17px/1.6 system-ui, sans-serif; color: #26312c; background: #f4f5f0; }
+    body { max-width: 58rem; margin: 3rem auto; padding: 0 1.5rem; }
+    .controls { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; }
+    .card { background: white; padding: 1rem; border-left: .3rem solid #6c876e; border-radius: .4rem; }
+    [data-theme="amber"] { border-color: #b48231; } [data-theme="violet"] { border-color: #8568ae; }
+    button, input { font: inherit; } button { padding: .3rem .65rem; cursor: pointer; }
+    input { width: 100%; box-sizing: border-box; }
+  </style>
+  <script type="text/rust">
+use fusor::prelude::*;
+use crate::shared::{Metrics, Theme, increment};
+use crate::ui::{card::Card, layout::Layout};
+use std::{cell::RefCell, rc::Rc};
+use wasm_bindgen::prelude::*;
+
+struct App {
+    count: Signal<u32>,
+    visible: Signal<bool>,
+    reset: Signal<u32>,
+    left_theme: Signal<String>,
+    selection: Signal<Option<Content>>,
+    original: Content,
+    caption: Memo<String>,
+    fail: Signal<bool>,
+}
+impl App {
+    fn new(owner: OwnerHandle) -> Result<Self, JsValue> {
+        owner.provide::<Theme>(signal("root".into())).map_err(context_error)?;
+        owner.provide::<Metrics>(Metrics::default()).map_err(context_error)?;
+        let metrics = owner.context::<Metrics>().expect("provided above");
+        REPORT.with(|report| *report.borrow_mut() = Some(metrics.clone()));
+        let count = signal(0);
+        let caption = memo({
+            let count = count.clone();
+            move || {
+                increment(&metrics.computations);
+                format!("Group {}", count.get() / 10)
+            }
+        });
+        let fail = signal(false);
+        let original = content(caption.clone(), count.clone(), fail.clone());
+        // Creating unused content must not construct a component or start work.
+        let _unused = Content::new(|_| -> Card { panic!("unused content was invoked") });
+        Ok(Self { count, visible: signal(true), reset: signal(0), left_theme: signal("amber".into()),
+            selection: signal(Some(original.clone())), original, caption, fail })
+    }
+    fn replace(&self) {
+        self.selection.set(Some(content(self.caption.clone(), self.count.clone(), self.fail.clone())));
+    }
+}
+fn content(caption: Memo<String>, count: Signal<u32>, fail: Signal<bool>) -> Content {
+    Content::try_new(move |owner| {
+        let card = Card::new(owner, caption.clone(), count.clone())?;
+        if fail.get() { Err(JsValue::from_str("expected content failure")) } else { Ok(card) }
+    })
+}
+fn context_error(error: ContextError) -> JsValue { JsValue::from_str(&error.to_string()) }
+thread_local! {
+    static APP: RefCell<Option<Scope>> = const { RefCell::new(None) };
+    static REPORT: RefCell<Option<Rc<Metrics>>> = const { RefCell::new(None) };
+}
+#[wasm_bindgen(start)]
+pub fn start() -> Result<(), JsValue> {
+    unmount();
+    let scope = App::try_mount_with(App::new)?;
+    APP.with(|app| *app.borrow_mut() = Some(scope));
+    Ok(())
+}
+#[wasm_bindgen]
+pub fn unmount() { let old = APP.with(|app| app.borrow_mut().take()); drop(old); }
+// Public observations for browser integration tests; no runtime internals.
+#[wasm_bindgen]
+pub fn metrics() -> Vec<u32> {
+    REPORT.with(|report| report.borrow().as_ref().map_or_else(Vec::new, |m| vec![
+        m.created.get(), m.dropped.get(), m.started.get(), m.cancelled.get(), m.futures_dropped.get(), m.computations.get()
+    ]))
+}
+  </script>
+</head>
+<body>
+  <main rust:component="App">
+    <h1>One content factory, independent instances</h1>
+    <p>Both layouts receive the same Rust factory. Their cards inherit different contexts, share a cached caption, and own their local notes and async work.</p>
+    <div class="controls">
+      <button id="toggle" on:click="state.visible.update(|v| *v = !*v)">Toggle first slot</button>
+      <button id="reset" on:click="state.reset.update(|n| *n += 1)">Reset first slot</button>
+      <button id="theme" on:click="state.left_theme.set(String::from(&quot;green&quot;))">Change first context</button>
+      <button id="clear" on:click="state.selection.set(None)">Clear content</button>
+      <button id="restore" on:click="state.selection.set(Some(state.original.clone()))">Restore original</button>
+      <button id="replace" on:click="state.replace()">New factory</button>
+      <button id="fail" on:click="state.fail.set(true)">Make next replacement fail</button>
+      <button id="recover" on:click="state.fail.set(false)">Allow replacement</button>
+      <button id="ten" on:click="state.count.update(|n| *n += 10)">Add ten</button>
+    </div>
+    <p id="total">{{ state.count.get() }}</p>
+    <div class="columns">
+      <div id="first"><Layout title="{{ &quot;First layout&quot; }}" theme="{{ state.left_theme.clone() }}" body="{{ state.selection.clone() }}" visible="{{ state.visible.clone() }}" reset="{{ state.reset.clone() }}"></Layout></div>
+      <div id="second"><Layout title="{{ &quot;Second layout&quot; }}" theme="{{ signal(String::from(&quot;violet&quot;)) }}" body="{{ state.selection.clone() }}" visible="{{ signal(true) }}" reset="{{ signal(0) }}"></Layout></div>
+    </div>
+  </main>
+</body>
+</html>

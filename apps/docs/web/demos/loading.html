@@ -1,0 +1,50 @@
+<script
+  type="text/rust"
+  src="../../src/demos/loading.rs"
+  rust:module="crate::demos::loading"
+></script>
+<template rust:component="Loading">
+  <section class="demo-loading" aria-label="Async field guide">
+    <div class="segmented" role="group" aria-label="Destination">
+      <button
+        aria-pressed='{{ state.selected.get() == "Kyoto" }}'
+        on:click='state.selected.set("Kyoto".into())'
+      >
+        Kyoto</button
+      ><button
+        aria-pressed='{{ state.selected.get() == "Lisbon" }}'
+        on:click='state.selected.set("Lisbon".into())'
+      >
+        Lisbon</button
+      ><button
+        aria-pressed='{{ state.selected.get() == "Reykjavik" }}'
+        on:click='state.selected.set("Reykjavik".into())'
+      >
+        Reykjavik
+      </button>
+    </div>
+    <p class="request-status" role="status">{{ state.status() }}</p>
+    <article
+      class="field-note"
+      aria-busy="{{ state.data.with(|s| s.is_loading()) }}"
+    >
+      <span class="eyebrow">FIELD NOTES</span>
+      <h3>{{ state.title() }}</h3>
+      <p>{{ state.text() }}</p>
+    </article>
+    <div class="demo-actions">
+      <button
+        on:click="state.simulate_error()"
+        disabled="{{ state.data.with(|s| s.is_loading()) }}"
+      >
+        Simulate an error</button
+      ><button
+        on:click="state.data.refresh()"
+        disabled="{{ state.data.with(|s| s.is_loading()) }}"
+      >
+        Reload / retry
+      </button>
+    </div>
+    <p class="demo-caption">Local HTTP fixtures · 700 ms artificial delay</p>
+  </section>
+</template>

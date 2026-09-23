@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Async and Await</title></head><body>
+<App state="{{ App::new(owner) }}"><main>
+  <button id="a" on:click='state.selected.set("A".into())'>A</button>
+  <button id="b" on:click='state.selected.set("B".into())'>B</button>
+  <button id="c" on:click='state.selected.set("C".into())'>C</button>
+  <button id="toggle" on:click="state.visible.update(|v| *v = !*v)">Toggle</button>
+  <button id="retained-toggle" on:click="state.show_retained.update(|v| *v = !*v)">Retained read</button>
+  <Retained value="{{ state.retained.clone() }}" rust:if="state.show_retained.get()"></Retained>
+  <output id="clicked">{{ state.clicked.get() }}</output>
+  <section id="independent">
+    <h2>Independent</h2>
+    <ReadPanel selected="{{ state.selected.clone() }}" kind="price" clicked="{{ state.clicked.clone() }}" rust:if="state.visible.get()"></ReadPanel>
+    <ReadPanel selected="{{ state.selected.clone() }}" kind="stock" clicked="{{ state.clicked.clone() }}"></ReadPanel>
+  </section>
+  <Async><section id="together">
+    <h2>{{ state.selected.get() }}</h2>
+    <ReadPanel selected="{{ state.selected.clone() }}" kind="group-price" clicked="{{ state.clicked.clone() }}"></ReadPanel>
+    <ReadPanel selected="{{ state.selected.clone() }}" kind="group-stock" clicked="{{ state.clicked.clone() }}"></ReadPanel>
+  </section></Async>
+</main></App>
+<template rust:component="ReadPanel">
+  <Await value="{{ state.read }}" let="result"><article data-response="{{ result.as_str() }}">
+    <p class="value" title="{{ result.as_str() }}">{{ result.as_str() }}</p>
+    <button class="use" on:click="state.clicked.set(result.as_ref().clone())">Use</button>
+    <Await value="{{ state.read }}" let="again"><aside><span class="nested">{{ result.as_str() }} / {{ again.as_str() }}</span></aside></Await>
+    <ul><ForEach items="{{ vec![result.as_ref().clone()] }}" key="{{ |item| item.clone() }}"><li>{{ result.as_str() }} / {{ item.get() }}</li></ForEach></ul>
+    <Panel rust:key="result.as_ref().clone()"><span class="supplied">{{ result.as_str() }}</span></Panel>
+  </article></Await>
+</template>
+<template rust:component="Panel"><div class="panel"><Children></Children></div></template>
+</body></html>
+
+<template rust:component="Retained"><Await value="{{ state.value }}" let="result"><p id="retained-value">{{ result.as_str() }}</p></Await></template>

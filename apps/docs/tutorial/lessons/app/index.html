@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My application</title>
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <App state="{{ create_dashboard() }}">
+    <main>
+      <h1>Dashboard</h1>
+      <p>Count: <output>{{ state.count.get() }}</output></p>
+      <button on:click="state.count.update(|count| *count += 1)">Add one</button>
+    </main>
+  </App>
+</body>
+</html>

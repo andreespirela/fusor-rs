@@ -1,0 +1,7 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>fusor benchmark workload</title><script type="module" src="/workloads/fusor/harness.js"></script></head><body><div id="app"></div>
+<script type="text/rust" src="../src/lib.rs" rust:module="crate"></script>
+<template rust:component="App" rust:render="shared"><section><output id="total">{{ state.model.total.get() }}</output><ul><ForEach items="{{ state.model.visible() }}" key="{{ |item| item.id }}">
+<Row item="{{ item.clone() }}" model="{{ state.model.clone() }}"></Row>
+</ForEach></ul></section></template>
+<template rust:component="Row" rust:render="shared"><li data-id="{{ state.item.get().id }}"><span class="value">{{ if state.model.mode == "computed" { state.computed.get() } else if state.model.mode == "fanout" { state.item.get().value.get() + state.model.shared.get() } else { state.item.get().value.get() } }}</span><button on:click="state.item.get().value.update(|value| *value += 1)">+</button></li></template>
+</body></html>

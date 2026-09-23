@@ -1,0 +1,1 @@
+HTML components own their subscriptions and reads.

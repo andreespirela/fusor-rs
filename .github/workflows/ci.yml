@@ -1,0 +1,76 @@
+name: fusor
+on: [push, pull_request]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: just check
+      # The installer is run for real by the release workflow; this catches
+      # shell mistakes on every push.
+      - if: runner.os == 'Linux'
+        run: shellcheck install.sh
+
+  msrv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+      - run: cargo test -p fusor-std --features forms,actions --locked
+      - run: cargo check -p fusor-control-flow -p fusor-playground -p fusor-navigation -p fusor-composition -p fusor-integrations -p fusor-editor -p fusor-coherent -p catalog-cart-web -p catalog-designer-web -p fusor-landing -p fusor-docs -p fusor-benchmarks --target wasm32-unknown-unknown --locked
+      - run: cargo check --manifest-path tests/fixtures/consumer/Cargo.toml --locked
+      - run: cargo build --manifest-path tests/fixtures/application/Cargo.toml --target wasm32-unknown-unknown --locked
+      - run: cargo check --manifest-path tests/fixtures/component-tags/Cargo.toml --target wasm32-unknown-unknown --locked
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PLAYWRIGHT_BROWSERS: chromium,firefox,webkit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy, rust-analyzer
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: just setup-browser
+      - run: npx playwright install-deps chromium firefox webkit
+      - run: just ci-browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-test-results
+          path: test-results/

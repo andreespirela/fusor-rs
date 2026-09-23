@@ -1,0 +1,43 @@
+<script type="text/rust">
+use fusor::prelude::*;
+use crate::ui::{app, label::Label};
+use crate::ui::badge::Badge;
+
+pub struct Counter {
+    count: Signal<i32>,
+    clicks: Signal<i32>,
+    name: Signal<String>,
+}
+
+impl Counter {
+    pub fn new(count: Signal<i32>) -> Self {
+        let _initial = count.get(); // Constructor reads must not subscribe the parent.
+        app::created();
+        Self { count, clicks: signal(0), name: signal(String::from("edit me")) }
+    }
+}
+
+impl Drop for Counter {
+    fn drop(&mut self) { app::disposed(); }
+}
+
+pub struct CounterInputs {
+    pub count: Signal<i32>,
+}
+impl fusor::dom::FromInputs for Counter {
+    type Inputs = CounterInputs;
+    fn from_inputs(inputs: Self::Inputs, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
+        Ok(Self::new(inputs.count))
+    }
+}
+</script>
+<template rust:component="Counter">
+  <section class="counter">
+    <input aria-label="Local draft" bind:value="state.name">
+    <button class="increment" on:click="{ state.count.update(|n| *n += 1); state.clicks.update(|n| *n += 1); }">Increment</button>
+    <output class="clicks">{{ state.clicks.get() }}</output>
+    <output class="shared">{{ state.count.get() }}</output>
+    <div><Label text="{{ state.name.clone() }}"></Label></div>
+    <div><Badge></Badge></div>
+  </section>
+</template>

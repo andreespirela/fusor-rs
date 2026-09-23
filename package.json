@@ -1,0 +1,8 @@
+{
+  "name": "fusor-browser-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

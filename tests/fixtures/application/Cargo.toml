@@ -1,0 +1,32 @@
+[package]
+name = "fusor-application-test"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[workspace]
+
+[lib]
+name = "custom_client_name"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fusor-core = { path = "../../../crates/fusor-core", features = ["dom"] }
+wasm-bindgen = "=0.2.117"
+
+[build-dependencies]
+fusor-build = { path = "../../../crates/fusor-build" }
+
+[package.metadata.fusor]
+entry = "web/index.html"
+assets = "public"
+output = "site"
+base-path = "/tools/issues/"
+
+[package.metadata.fusor.components]
+panel = "web/components/panel.html"
+counter = "web/components/counter.html"
+label = "web/components/label.html"
+recursive = "web/components/recursive.html"
+badge = "web/components/badge.html"

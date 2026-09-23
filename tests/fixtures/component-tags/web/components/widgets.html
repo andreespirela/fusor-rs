@@ -1,0 +1,18 @@
+<template rust:component="Counter">
+  <section class="counter" data-label="{{ state.label }}">
+    <button on:click="state.clicks.update(|value| *value += 1)">Local <span class="clicks">{{ state.clicks.get() }}</span></button>
+    <output class="count">{{ state.count.get() }}</output>
+    <output class="initial">{{ state.initial }}</output>
+  </section>
+</template>
+<template rust:component="Panel">
+  <article class="panel">
+    <h2>{{ state.title }}</h2>
+    <div class="first-slot" rust:slot="state.body.clone()"></div>
+    <div class="second-slot" rust:slot="state.body.clone()"></div>
+  </article>
+</template>
+<template rust:component="Badge"><small class="badge">{{ state.theme }}</small></template>
+<template rust:component="Row"><tr><td>{{ state.count.get() }}</td></tr></template>
+<template rust:component="Empty"><hr></template>
+<template rust:component="Button"><button class="rust-button">Rust component</button></template>

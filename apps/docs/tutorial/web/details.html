@@ -1,0 +1,9 @@
+<script type="text/rust" src="../src/details.rs"
+        rust:module="crate::details"></script>
+
+<template rust:component="Details">
+  <section class="details">
+    <h2>Issue {{ state.id }}</h2>
+    <label>Local note <input bind:value="state.note"></label>
+  </section>
+</template>

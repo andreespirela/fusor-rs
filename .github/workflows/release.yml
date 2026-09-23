@@ -1,0 +1,160 @@
+name: Release
+# Publishing a GitHub release tagged vX.Y.Z builds and tests the CLI for every
+# platform, attaches the archives to the release, and publishes every crate at
+# that version to crates.io. Running the workflow by hand only builds and tests
+# the binaries. See "Releasing" in CONTRIBUTING.md.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never run two releases at once, and never cancel one halfway.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}, wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      # Static Linux binaries run on any distribution. `ring`, under the CLI's
+      # HTTPS client, compiles C and needs the musl compiler.
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Read the version
+        id: version
+        run: echo "version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "fusor-core") | .version')" >> "$GITHUB_OUTPUT"
+      - run: cargo build --locked --release --target ${{ matrix.target }} -p fusor-cli -p cargo-fusor
+      # Checks each binary reports the version and runs from the finished archive.
+      - run: cargo run --locked -p fusor-release -- package --target ${{ matrix.target }} --output "target/release-artifacts/v${{ steps.version.outputs.version }}"
+      - name: Smoke-test the binary against a new application
+        run: cargo run --locked -p fusor-release -- smoke "target/${{ matrix.target }}/release/fusor$(if [ "$RUNNER_OS" = Windows ]; then echo .exe; fi)"
+      # Serve this job's archives the way a release does, and install from them
+      # with the real installer before anything is published.
+      - name: Test the installer
+        run: node scripts/test-installer.mjs target/release-artifacts "${{ steps.version.outputs.version }}" "$RUNNER_TEMP/fusor"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fusor-${{ matrix.target }}
+          path: target/release-artifacts/v${{ steps.version.outputs.version }}/*
+          if-no-files-found: error
+
+  attach:
+    if: github.event_name == 'release'
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - run: gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  crates-io:
+    if: github.event_name == 'release'
+    needs: binaries
+    runs-on: ubuntu-latest
+    # Holds the CARGO_REGISTRY_TOKEN secret. Add required reviewers to this
+    # environment to approve each release before it uploads.
+    environment: crates-io
+    # A first release waits out crates.io's limit on brand-new crates.
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Check the tag matches the version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "fusor-core") | .version')
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The release tag $GITHUB_REF_NAME does not match the workspace version v$version"
+            exit 1
+          fi
+      - run: just check
+      - run: cargo publish --workspace --locked --dry-run
+      - name: Publish to crates.io
+        # `bash` rather than the default shell, for pipefail: a failed publish
+        # must not be hidden behind `tee`.
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        # crates.io allows 5 brand-new crates in a burst, then 1 every 10 minutes
+        # (https://crates.io/docs/rate-limits), and `cargo publish --workspace`
+        # refuses to run once any version is already published. So publish in
+        # rounds: skip what is on crates.io, and wait when crates.io says 429.
+        # Later releases only update existing crates and finish in one round.
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "fusor-core") | .version')
+          crates=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.publish != []) | .name')
+          on_crates_io() {
+            local name=$1 path
+            case ${#name} in
+              1) path="1/$name" ;;
+              2) path="2/$name" ;;
+              3) path="3/${name:0:1}/$name" ;;
+              *) path="${name:0:2}/${name:2:2}/$name" ;;
+            esac
+            curl -sf "https://index.crates.io/$path" | grep -q "\"vers\":\"$version\""
+          }
+          for round in $(seq 1 12); do
+            skip=() remaining=0
+            for name in $crates; do
+              if on_crates_io "$name"; then skip+=(--exclude "$name"); else remaining=$((remaining + 1)); fi
+            done
+            if [ "$remaining" -eq 0 ]; then
+              echo "Every crate is on crates.io at $version."
+              exit 0
+            fi
+            if cargo publish --workspace --locked "${skip[@]}" 2>&1 | tee publish.log; then
+              continue
+            fi
+            if ! grep -q '429' publish.log; then
+              echo "::error::cargo publish failed for a reason other than crates.io's rate limit"
+              exit 1
+            fi
+            echo "crates.io is limiting new crates; waiting 10 minutes (round $round)."
+            sleep 600
+          done
+          echo "::error::crates.io was still rate-limiting after 12 rounds; rerun this job to finish"
+          exit 1

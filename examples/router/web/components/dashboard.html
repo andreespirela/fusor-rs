@@ -1,0 +1,21 @@
+<template rust:component="Dashboard"><section id="dashboard">
+<h1>Dashboard</h1><button id="parent-count" on:click="state.count.update(|n| *n += 1)">Parent {{ state.count.get() }}</button>
+<nav><a data-fusor-link href="/nested/dashboard">Overview</a> <a data-fusor-link href="/nested/dashboard/settings">Settings</a> <a data-fusor-link href="/nested/dashboard/filter?q=one">Filter</a> <a data-fusor-link href="/nested/dashboard/filter?q=two">Filter two</a> <a data-fusor-link href="/nested/dashboard/missing">Missing</a></nav>
+<Router>
+<Route path=""><Overview></Overview></Route>
+<Route path="settings/*"><Settings></Settings></Route>
+<Route path="filter"><Filter></Filter></Route>
+<Route fallback><Missing></Missing></Route>
+</Router>
+</section></template>
+<template rust:component="Overview"><p id="overview">Overview page</p></template>
+<template rust:component="Settings"><section id="settings"><h2>Settings</h2><button id="child-count" on:click="state.count.update(|n| *n += 1)">Child {{ state.count.get() }}</button>
+<Router><Route path=""><p>Choose a setting</p></Route><Route path="preferences"><p id="preferences">Preferences</p></Route><Route fallback><p id="settings-missing">Setting not found</p></Route></Router>
+</section></template>
+<template rust:component="Filter"><p id="filter">{{ state.location.get().query_first("q").unwrap_or_default() }}</p></template>
+<template rust:component="Missing"><p id="nested-missing">Dashboard page not found</p></template>
+
+<template rust:component="Team"><section id="team">
+<h1>Team {{ state.slug }}</h1><button id="team-count" on:click="state.count.update(|n| *n += 1)">{{ state.count.get() }}</button>
+<Router><Route path=""><p>Team overview</p></Route><Route path="members/:id" let="member"><p id="member">Member {{ member.id }}</p></Route></Router>
+</section></template>

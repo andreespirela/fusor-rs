@@ -1,0 +1,17 @@
+[package]
+name = "catalog-designer-views"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+[dependencies]
+catalog-types = { path = "../types" }
+fusor-core = { workspace = true, features = ["islands"] }
+fusor-islands = { workspace = true, features = ["browser"] }
+fusor-async = { workspace = true, features = ["browser"] }
+wasm-bindgen.workspace = true
+[build-dependencies]
+fusor-build.workspace = true
+[package.metadata.fusor]
+entry = "web/designer.html"

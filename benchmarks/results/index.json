@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "published": {
+    "experiment": "20260922-baseline",
+    "evidence": "data/full.json",
+    "sha256": "b6e777142f76550fe205bbe999124da32af7241310d6e240281256878c3965ae"
+  },
+  "experiments": [
+    {
+      "id": "20260922-baseline",
+      "title": "Six-framework baseline",
+      "path": "history/20260922-baseline/record.json"
+    }
+  ]
+}

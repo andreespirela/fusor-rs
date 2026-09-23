@@ -1,0 +1,39 @@
+[package]
+name = "fusor-docs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+[lib]
+crate-type = ["cdylib", "rlib"]
+[dependencies]
+fusor-components = { workspace = true, features = ["browser"] }
+fusor-core = { workspace = true, features = ["dom", "javascript"] }
+fusor-router = { workspace = true, features = ["browser"] }
+fusor-async = { workspace = true, features = ["browser"] }
+gloo-timers = { version = "=0.3.0", features = ["futures"] }
+wasm-bindgen.workspace = true
+web-sys = { workspace = true, features = ["KeyboardEvent", "Storage", "Navigator", "Clipboard"] }
+[build-dependencies]
+fusor-build.workspace = true
+serde_json = "1"
+syntect = { version = "=5.3.0", default-features = false, features = ["default-themes", "regex-fancy"] }
+two-face = { version = "=0.5.2", default-features = false, features = ["syntect-fancy"] }
+[package.metadata.fusor]
+entry = "web/index.html"
+templates = ["web/components", "web/demos"]
+assets = "public"
+base-path = "/docs/"
+history-fallback = ["/"]
+[package.metadata.fusor.components]
+article = "web/article.html"
+code = "web/code.html"
+showcase = "web/showcase.html"
+reactive = "web/demos/reactive.html"
+keyed = "web/demos/keyed.html"
+lifecycle = "web/demos/lifecycle.html"
+loading = "web/demos/loading.html"
+coherent = "web/demos/coherent.html"
+comparison = "web/demos/comparison.html"
+context = "web/demos/context.html"

@@ -1,0 +1,232 @@
+[
+  {
+    "token": "Children",
+    "href": "/docs/html-and-rust/built-in-components#children",
+    "label": "Children · place the caller’s HTML"
+  },
+  {
+    "token": "rust:component",
+    "href": "/docs/html-and-rust/attributes#component",
+    "label": "rust:component · HTML for a Rust type"
+  },
+  {
+    "token": "App",
+    "href": "/docs/html-and-rust/built-in-components#app",
+    "label": "App · startup, state, and owner"
+  },
+  {
+    "token": "rust:module",
+    "href": "/docs/html-and-rust/attributes#module",
+    "label": "rust:module · external Rust files"
+  },
+  {
+    "token": "rust:if",
+    "href": "/docs/html-and-rust/attributes#if",
+    "label": "rust:if · mount or remove"
+  },
+  {
+    "token": "rust:key",
+    "href": "/docs/html-and-rust/attributes#key",
+    "label": "rust:key · component identity"
+  },
+  {
+    "token": "Async",
+    "href": "/docs/html-and-rust/built-in-components#async",
+    "label": "Async · coordinate a complete view"
+  },
+  {
+    "token": "Await",
+    "href": "/docs/html-and-rust/built-in-components#await",
+    "label": "Await · display a named async result"
+  },
+  {
+    "token": "rust:render",
+    "href": "/docs/html-and-rust/attributes#render",
+    "label": "rust:render · server/shared output"
+  },
+  {
+    "token": "hydrate",
+    "href": "/docs/html-and-rust/attributes#island",
+    "label": "hydrate · HTML now, interactivity later"
+  },
+  {
+    "token": "hydrate:id",
+    "href": "/docs/html-and-rust/attributes#activate",
+    "label": "hydrate:id · name an instance"
+  },
+  {
+    "token": "hydrate:prefetch",
+    "href": "/docs/html-and-rust/attributes#prefetch",
+    "label": "hydrate:prefetch · earlier code download"
+  },
+  {
+    "token": "hydrate:target",
+    "href": "/docs/html-and-rust/attributes#activate-target",
+    "label": "hydrate:target · activation button"
+  },
+  {
+    "token": "bind:value",
+    "href": "/docs/html-and-rust/attributes#bindings",
+    "label": "bind:value / bind:checked · input signals"
+  },
+  {
+    "token": "bind:checked",
+    "href": "/docs/html-and-rust/attributes#bindings",
+    "label": "bind:value / bind:checked · input signals"
+  },
+  {
+    "token": "bind:field",
+    "href": "/docs/html-and-rust/attributes#field",
+    "label": "bind:field · typed editable text"
+  },
+  {
+    "token": "{{",
+    "href": "/docs/html-and-rust/attributes#interpolation",
+    "label": "{{ expression }} · text and attributes"
+  },
+  {
+    "token": "data-fusor-link",
+    "href": "/docs/html-and-rust/attributes#link",
+    "label": "data-fusor-link · router navigation"
+  },
+  {
+    "token": "OwnerHandle",
+    "href": "/docs/ownership/mounting#owner",
+    "label": "OwnerHandle · lifetime of a view"
+  },
+  {
+    "token": "owner",
+    "href": "/docs/ownership/mounting#owner-variable",
+    "label": "owner · where the handle comes from"
+  },
+  {
+    "token": "FromInputs",
+    "href": "/docs/ownership/mounting#tags",
+    "label": "FromInputs · the component-tag constructor"
+  },
+  {
+    "token": "browser::resource",
+    "href": "/docs/async-data/resource#resource",
+    "label": "browser::resource · three arguments"
+  },
+  {
+    "token": "resource(",
+    "href": "/docs/async-data/resource#resource",
+    "label": "browser::resource · three arguments"
+  },
+  {
+    "token": "Resource",
+    "href": "/docs/async-data/resource#state",
+    "label": "Resource state · loading, success, and error"
+  },
+  {
+    "token": "ResourceState",
+    "href": "/docs/async-data/resource#state",
+    "label": "Resource state · loading, success, and error"
+  },
+  {
+    "token": "get_text",
+    "href": "/docs/async-data/resource#request",
+    "label": "get_text · abortable HTTP GET"
+  },
+  {
+    "token": "RequestContext",
+    "href": "/docs/async-data/resource#cancel",
+    "label": "RequestContext · cancellation"
+  },
+  {
+    "token": "on_cancel",
+    "href": "/docs/async-data/resource#cancel",
+    "label": "RequestContext · cancellation"
+  },
+  {
+    "token": "browser::read",
+    "href": "/docs/async-data/resource#read",
+    "label": "browser::read · declare an async read"
+  },
+  {
+    "token": "AsyncValue",
+    "href": "/docs/async-data/resource#read",
+    "label": "browser::read · declare an async read"
+  },
+  {
+    "token": "AsyncBoundary",
+    "href": "/docs/coherent-async/semantics#boundary",
+    "label": "AsyncBoundary · coordinate a complete view"
+  },
+  {
+    "token": "on:",
+    "href": "/docs/events#listen",
+    "label": "on:event · browser and custom events"
+  },
+  {
+    "token": "class:",
+    "href": "/docs/html-and-rust/attributes#classes",
+    "label": "class:name · conditional CSS class"
+  },
+  {
+    "token": "ForEach",
+    "href": "/docs/html-and-rust/built-in-components#each",
+    "label": "ForEach · inline rows, item, and index"
+  },
+  {
+    "token": "prop:",
+    "href": "/docs/html-and-rust/attributes#properties",
+    "label": "prop:name · bind a custom-element property"
+  },
+  {
+    "token": "JsInputs",
+    "href": "/docs/npm#rust-state",
+    "label": "JsInputs · expose selected Rust signals"
+  },
+  {
+    "token": "event_detail",
+    "href": "/docs/npm#events",
+    "label": "event_detail · checked CustomEvent values"
+  },
+  {
+    "token": "onMount",
+    "href": "/docs/npm#mount-context",
+    "label": "onMount · JavaScript setup for one component"
+  },
+  {
+    "token": "onCleanup",
+    "href": "/docs/npm#cleanup",
+    "label": "onCleanup · release JavaScript resources"
+  },
+  {
+    "token": "#[js]",
+    "href": "/docs/npm#rust-state",
+    "label": "#[js] · expose a Rust signal to JavaScript"
+  },
+  {
+    "token": "Router",
+    "href": "/docs/html-and-rust/built-in-components#router",
+    "label": "Router · owned HTML routes"
+  },
+  {
+    "token": "Route",
+    "href": "/docs/html-and-rust/built-in-components#router",
+    "label": "Route · owned HTML routes"
+  },
+  {
+    "token": "If",
+    "href": "/docs/html-and-rust/built-in-components#if",
+    "label": "If · conditional HTML"
+  },
+  {
+    "token": "Else",
+    "href": "/docs/html-and-rust/built-in-components#if",
+    "label": "Else · the fallback branch"
+  },
+  {
+    "token": "Match",
+    "href": "/docs/html-and-rust/built-in-components#match",
+    "label": "Match · exhaustive Rust patterns"
+  },
+  {
+    "token": "Case",
+    "href": "/docs/html-and-rust/built-in-components#match",
+    "label": "Case · a branch with reactive captures"
+  }
+]

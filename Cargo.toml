@@ -1,0 +1,55 @@
+[workspace]
+members = ["crates/fusor-core", "crates/fusor-npm", "crates/fusor-components", "crates/fusor-macros", "crates/fusor-async", "crates/fusor-router", "crates/fusor-build", "crates/cargo-fusor", "crates/fusor-cli", "crates/fusor-release", "crates/fusor-test", "crates/fusor-query", "crates/fusor-std", "crates/fusor-islands", "crates/fusor-server", "examples/control-flow", "examples/children", "examples/async-components", "examples/foreach", "examples/playground", "examples/navigation", "examples/router", "examples/composition", "examples/integrations", "examples/editor", "examples/coherent", "examples/islands/*", "apps/landing", "apps/docs", "apps/benchmarks", "benchmarks/workloads/fusor", "benchmarks/workloads/fusor-hello", "benchmarks/workloads/fusor-todo"]
+exclude = ["examples/npm"]
+resolver = "2"
+
+# Served as one site; see the "Publishing several applications" guide.
+[workspace.metadata.fusor.site]
+output = "dist"
+
+[workspace.metadata.fusor.site.mounts]
+"/" = "fusor-landing"
+"/docs/" = "fusor-docs"
+"/benchmarks/" = "fusor-benchmarks"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/andreespirela/fusor-rs"
+
+[workspace.dependencies]
+fusor-npm = { path = "crates/fusor-npm", version = "=0.1.0" }
+fusor-components = { path = "crates/fusor-components", version = "=0.1.0" }
+fusor-macros = { path = "crates/fusor-macros", version = "=0.1.0" }
+fusor-core = { path = "crates/fusor-core", version = "=0.1.0" }
+fusor-build = { path = "crates/fusor-build", version = "=0.1.0" }
+fusor-async = { path = "crates/fusor-async", version = "=0.1.0" }
+fusor-router = { path = "crates/fusor-router", version = "=0.1.0" }
+fusor-query = { path = "crates/fusor-query", version = "=0.1.0" }
+fusor-test = { path = "crates/fusor-test", version = "=0.1.0" }
+fusor-std = { path = "crates/fusor-std", version = "=0.1.0" }
+fusor-islands = { path = "crates/fusor-islands", version = "=0.1.0" }
+fusor-server = { path = "crates/fusor-server", version = "=0.1.0" }
+# Exact: the wasm-bindgen tool fusor downloads (BINDGEN_VERSION in
+# crates/fusor-cli/src/layout.rs) must match this crate version.
+wasm-bindgen = "=0.2.117"
+# Each release of these requires one exact wasm-bindgen, which settles them.
+js-sys = "0.3.94"
+web-sys = "0.3.94"
+wasm-bindgen-futures = "0.4.67"
+
+futures-util = { version = "0.3.34", default-features = false }
+futures-executor = "0.3.34"
+futures-channel = "0.3.34"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

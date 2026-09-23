@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "20260922-baseline",
+  "title": "Six-framework baseline",
+  "createdAt": "2026-09-22T19:28:44.299Z",
+  "status": "complete",
+  "selection": {
+    "name": "full",
+    "reason": "Single full run selected before measurement; publication is a separate explicit command.",
+    "selectedAt": "2026-09-22T19:28:44.300Z"
+  },
+  "notes": [
+    {
+      "kind": "decision",
+      "title": "Six-framework baseline",
+      "body": "First run recorded in the current format. It measures commit a241573 plus the uncommitted benchmark-tooling cleanup, which moved server-rendered HTML out of the fingerprinted build output. There is no earlier run to compare against.\n\nBuild: release profile with Binaryen 132 `wasm-opt -O3` through `FUSOR_WASM_OPT`, pinned wasm-bindgen 0.2.105, installed Chrome, framework order seeded with `BENCH_SEED=20261004`.\n\nRecorded 2026-09-22T19:28:46.386Z on Apple M4 Pro, darwin 24.5.0, browser 153.0.8010.53, 15 samples after 3 warmups.\n\nMedian milliseconds:\n\n| Metric | fusor | react | svelte | solid | vue | preact |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n| ssr-1000 | 0.24 | 0.92 | 0.35 | 0.29 | 1.06 | 1.49 |\n| ssr-10000 | 2.74 | 12.66 | 3.87 | 2.84 | 9.36 | 14.32 |\n| initial-1000 | 3.00 | 1.70 | 4.00 | 1.10 | 3.60 | 2.90 |\n| initial-10000 | 32.60 | 17.50 | 138.30 | 13.10 | 35.20 | 30.80 |\n| single | <0.10 | 0.70 | 0.60 | <0.10 | 0.10 | <0.10 |\n| bulk-1000 | 0.50 | 1.70 | 1.20 | 0.40 | 1.80 | 1.60 |\n| bulk-10000 | 3.90 | 8.70 | 7.10 | 3.80 | 16.10 | 17.40 |\n| insert | 2.10 | 2.00 | 9.80 | 0.30 | 6.80 | 2.50 |\n| delete | 2.00 | 1.70 | 9.10 | 0.20 | 7.10 | 2.60 |\n| swap | 1.40 | 108.60 | 7.90 | 0.70 | 4.70 | 2.50 |\n| computed | <0.10 | 0.60 | 0.30 | <0.10 | <0.10 | <0.10 |\n| fanout-1000 | 0.30 | 0.90 | 0.20 | 0.20 | 1.70 | 1.20 |\n| fanout-10000 | 4.10 | 9.10 | 3.60 | 2.60 | 22.30 | 17.10 |\n| fanin | 0.50 | <0.10 | 4.40 | 0.50 | 4.00 | 0.10 |\n| unmount | 5.70 | 7.30 | 2.80 | 1.00 | 5.00 | 2.00 |\n| events | 15.70 | 45.80 | 27.10 | 20.80 | 31.10 | 30.10 |\n| hydration-1000 | 9.60 | 6.60 | 10.30 | 4.00 | 9.40 | 6.70 |\n| hydration-10000 | 39.30 | 111.10 | 128.00 | 22.20 | 41.40 | 84.50 |\n| startup | 28.50 | 24.00 | 20.10 | 9.70 | 17.80 | 12.70 |\n\nGzip KiB per fixture:\n\n| Fixture | fusor | react | svelte | solid | vue | preact |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n| benchmark workload | 105.0 | 67.4 | 14.5 | 6.1 | 26.3 | 8.5 |\n| hello | 54.1 | 66.3 | 9.2 | 4.0 | 23.2 | 4.9 |\n| todo | 100.3 | 67.1 | 13.9 | 6.8 | 25.2 | 6.3 |\n\nEvery timed operation passed its correctness checks, and the source and artifact receipts matched before and after measurement.\n\nLimitations: one local machine, 15 samples per row with the maximum as P95, no CPU or network throttling, and Chromium-only timings. Values under 0.10 ms are below the browser clock's resolution. Gzip sizes are per file at level 9, excluding headers and Brotli.\n",
+      "format": "markdown",
+      "recordedAt": "2026-09-22T19:33:22.475Z"
+    }
+  ],
+  "events": [],
+  "evidence": [
+    {
+      "name": "full",
+      "kind": "measurement",
+      "protocol": "full",
+      "path": "data/full.json",
+      "bytes": 129621,
+      "sha256": "b6e777142f76550fe205bbe999124da32af7241310d6e240281256878c3965ae",
+      "sourceSha256": "5f7c8ef8f79f63c0079d570abe9334ca5e10d738c6e196f868286e83da951c82",
+      "recordedAt": "2026-09-22T19:32:59.990Z"
+    },
+    {
+      "name": "receipt",
+      "kind": "receipt",
+      "path": "data/receipt.json",
+      "bytes": 13891,
+      "sha256": "6578ce2260051173f8f25b205a819465926ca48262a27221a0c96980e165b433"
+    }
+  ],
+  "completedAt": "2026-09-22T19:33:22.603Z"
+}

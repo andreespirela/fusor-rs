@@ -1,0 +1,22 @@
+[package]
+name = "cargo-fusor"
+description = "Runs the fusor CLI as a Cargo subcommand, `cargo fusor`"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fusor", "cargo-subcommand", "wasm", "cli"]
+categories = ["command-line-utilities", "development-tools::cargo-plugins", "wasm"]
+readme = "README.md"
+
+[[bin]]
+name = "cargo-fusor"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+fusor-cli = { path = "../fusor-cli", version = "=0.1.0" }
+
+[lints]
+workspace = true

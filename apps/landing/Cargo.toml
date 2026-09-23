@@ -1,0 +1,28 @@
+[package]
+name = "fusor-landing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fusor-core = { path = "../../crates/fusor-core", features = ["dom"] }
+fusor-components = { path = "../../crates/fusor-components", features = ["browser"] }
+fusor-async = { path = "../../crates/fusor-async", features = ["browser"] }
+gloo-timers = { version = "=0.3.0", features = ["futures"] }
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+web-sys = { workspace = true, features = ["Window", "Navigator", "Clipboard"] }
+
+[build-dependencies]
+fusor-build = { path = "../../crates/fusor-build" }
+syntect = { version = "=5.3.0", default-features = false, features = ["default-themes", "regex-fancy"] }
+two-face = { version = "=0.5.2", default-features = false, features = ["syntect-fancy"] }
+
+[package.metadata.fusor]
+assets = "public"
+base-path = "/"

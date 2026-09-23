@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fusor</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <App state="{{ App::new() }}">
+    <main>
+      <h1>Rust, inside HTML.</h1>
+      <p>Two instances share a Rust signal and keep their own local state.</p>
+      <Counter count="{{ state.count.clone() }}"></Counter>
+      <Counter count="{{ state.count.clone() }}"></Counter>
+      <p>Shared count: <output>{{ state.count.get() }}</output></p>
+    </main>
+  </App>
+</body>
+</html>

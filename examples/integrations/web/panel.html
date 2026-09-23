@@ -1,0 +1,69 @@
+<script type="text/rust">
+use fusor::prelude::*;
+use fusor_query::{Query, QueryClient, QueryState};
+use fusor::{FromInputs, JsInputs};
+use wasm_bindgen::JsValue;
+
+pub struct Panel {
+    query: Query<u32, String, JsValue>, text: Signal<String>, count: Signal<u32>, fail: bool,
+}
+impl Panel {
+    pub fn new(owner: OwnerHandle, client: QueryClient<u32, String, JsValue>, selected: Signal<u32>, text: Signal<String>, count: Signal<u32>, fail: bool) -> Self {
+        Self { query: client.observe(&owner, move || Some(selected.get())), text, count, fail }
+    }
+    fn label(&self) -> String {
+        self.query.with(|state| match state {
+            QueryState::Ready(data) => data.value.to_string(),
+            QueryState::Loading { .. } => "Loading…".into(),
+            QueryState::Error { .. } => "Request failed".into(),
+            QueryState::Capacity { .. } => "Query capacity reached".into(),
+            _ => "Waiting".into(),
+        })
+    }
+}
+
+pub struct PanelInputs {
+    pub client: QueryClient<u32, String, JsValue>,
+    pub selected: Signal<u32>,
+    pub text: Signal<String>,
+    pub count: Signal<u32>,
+    pub fail: bool,
+}
+impl fusor::dom::FromInputs for Panel {
+    type Inputs = PanelInputs;
+    fn from_inputs(inputs: Self::Inputs, owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
+        Ok(Self::new(owner, inputs.client, inputs.selected, inputs.text, inputs.count, inputs.fail))
+    }
+}
+#[derive(FromInputs, JsInputs)]
+pub struct Editor {
+    #[input] #[js] text: Signal<String>,
+    #[input] #[js] fail: Signal<bool>,
+}
+impl Editor {
+    fn changed(&self, event: web_sys::Event) {
+        if let Ok(value) = fusor::js::event_detail::<String>(&event) { self.text.set(value); }
+    }
+}
+#[derive(FromInputs, JsInputs)]
+pub struct Chart {
+    #[input] #[js] count: Signal<u32>,
+}
+</script>
+<template rust:component="Panel">
+  <section class="panel">
+    <h2 class="heading">Shared item</h2>
+    <p class="data">{{ state.label() }}</p>
+    <Editor text="{{ state.text.clone() }}" fail="{{ signal(state.fail) }}"></Editor>
+    <Chart count="{{ state.count.clone() }}"></Chart>
+  </section>
+</template>
+
+<template rust:component="Editor">
+  <script type="module" src="./editor.js"></script>
+  <div class="editor" on:editor-change="state.changed(event)"></div>
+</template>
+<template rust:component="Chart">
+  <script type="module" src="./chart.js"></script>
+  <div class="chart"></div>
+</template>

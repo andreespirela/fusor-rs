@@ -1,0 +1,50 @@
+<script type="text/rust">
+use fusor::prelude::*;
+use fusor_async::{Resource, browser::resource};
+use crate::shared::{Metrics, PendingRead, Theme, increment};
+use std::rc::Rc;
+use wasm_bindgen::JsValue;
+
+pub struct Card {
+    theme: Rc<Signal<String>>,
+    caption: Memo<String>,
+    shared: Signal<u32>,
+    clicks: Signal<u32>,
+    draft: Signal<String>,
+    metrics: Rc<Metrics>,
+    _read: Resource<(), (), JsValue>,
+}
+impl Card {
+    pub fn new(owner: OwnerHandle, caption: Memo<String>, shared: Signal<u32>) -> Result<Self, JsValue> {
+        let metrics = owner.context::<Metrics>().ok_or_else(|| JsValue::from_str("missing metrics"))?;
+        let theme = owner.context::<Theme>().ok_or_else(|| JsValue::from_str("missing theme"))?;
+        let load_metrics = metrics.clone();
+        let read = resource(&owner, || Some(()), move |_, request| {
+            increment(&load_metrics.started);
+            let lifetime = PendingRead(load_metrics.clone());
+            let metrics = load_metrics.clone();
+            let cancelled = request.on_cancel(move || increment(&metrics.cancelled));
+            async move {
+                let (_lifetime, _cancelled) = (lifetime, cancelled);
+                std::future::pending::<Result<(), JsValue>>().await
+            }
+        });
+        increment(&metrics.created);
+        Ok(Self { theme, caption, shared, clicks: signal(0), draft: signal(String::new()), metrics, _read: read })
+    }
+}
+impl Drop for Card {
+    fn drop(&mut self) { increment(&self.metrics.dropped); }
+}
+</script>
+<template rust:component="Card">
+  <article class="card" data-theme="{{ state.theme.get() }}">
+    <p>Context at this slot: <strong class="theme">{{ state.theme.get() }}</strong></p>
+    <p class="caption">{{ state.caption.get() }}</p>
+    <p class="caption-again">{{ state.caption.with(|caption| format!("Shared cache: {caption}")) }}</p>
+    <p>Shared value: <output class="shared">{{ state.shared.get() }}</output></p>
+    <button class="increment" on:click="batch(|| { state.shared.update(|n| *n += 1); state.clicks.update(|n| *n += 1); })">Increment</button>
+    <p>Clicks here: <output class="clicks">{{ state.clicks.get() }}</output></p>
+    <label>Local note <input bind:value="state.draft"></label>
+  </article>
+</template>

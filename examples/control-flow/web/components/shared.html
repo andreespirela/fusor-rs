@@ -1,0 +1,10 @@
+<template rust:component="Shared" rust:render="shared">
+  <section id="shared">
+    <If condition="{{ state.visible.get() }}"><p>Visible</p></If>
+    <Match value="{{ state.session.get() }}">
+      <Case pattern="Session::Checking"><p>Checking</p></Case>
+      <Case pattern="Session::Guest"><p>Sign in</p></Case>
+      <Case pattern="Session::Authenticated { user }"><Dashboard user="{{ user.clone() }}"></Dashboard></Case>
+    </Match>
+  </section>
+</template>

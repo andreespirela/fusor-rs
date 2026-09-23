@@ -1,0 +1,44 @@
+name: examples
+
+# Full docs and third-party demos are checked on demand, separately from the
+# required framework contracts in ci.yml.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: examples-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PLAYWRIGHT_BROWSERS: chromium,firefox,webkit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: just setup
+      - run: npx playwright install-deps chromium firefox webkit
+      # The Three.js demo uses real WebGL 2 renderers, including Linux Firefox.
+      - run: xvfb-run --auto-servernum just ci-examples
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: example-test-results
+          path: |
+            test-results/
+            target/screenshots/

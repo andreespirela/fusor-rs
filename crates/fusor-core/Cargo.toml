@@ -1,0 +1,38 @@
+[package]
+name = "fusor-core"
+description = "Signals, component ownership and the browser DOM runtime for fusor applications"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "../../README.md"
+keywords = ["web", "wasm", "reactive", "frontend"]
+categories = ["wasm", "web-programming"]
+
+# Published as fusor-core because the name fusor was taken; the library is
+# still `fusor`, which is what applications and generated code import.
+[lib]
+name = "fusor"
+
+[features]
+default = []
+islands = ["dom", "dep:js-sys"]
+dom = ["dep:wasm-bindgen", "dep:web-sys", "dep:fusor-macros", "dep:js-sys"]
+javascript = ["dom", "dep:js-sys", "web-sys/CustomEvent"]
+
+[dependencies]
+fusor-macros = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true, features = [
+  "Window", "Document", "Element", "Node", "Event", "EventTarget",
+  "HtmlInputElement", "HtmlElement", "HtmlTemplateElement", "DocumentFragment",
+  "DomTokenList", "Text", "Comment", "CharacterData", "TreeWalker", "NodeList", "console",
+] }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

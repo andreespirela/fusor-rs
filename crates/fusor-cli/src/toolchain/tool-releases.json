@@ -1,0 +1,8 @@
+{
+  "wasm-bindgen-0.2.117-aarch64-apple-darwin.tar.gz": "d7691b221163d68884ef0a893cb57d3372f1100789dbf0cc2c9260a7f253a497",
+  "wasm-bindgen-0.2.117-aarch64-unknown-linux-gnu.tar.gz": "27f9914864d02240e62e460860b015293e540217d9da2d8e699a1a6ee88bb326",
+  "wasm-bindgen-0.2.117-aarch64-unknown-linux-musl.tar.gz": "a9e2c56bf58a95bdfd8f2a67f726a3d11fa873cfe984468e5bbf0e48cb7dd923",
+  "wasm-bindgen-0.2.117-x86_64-apple-darwin.tar.gz": "17d991583d7036cd773b62eb8c0f295dd31cde7bf9ab250276be56f9138723d3",
+  "wasm-bindgen-0.2.117-x86_64-pc-windows-msvc.tar.gz": "54d52650adcf93e332d1d02c94c81925dfbda1f1292cecf276a0507263a4936f",
+  "wasm-bindgen-0.2.117-x86_64-unknown-linux-musl.tar.gz": "97f527f7c7956f69a88a4bdb5176142ebc4e255c2dbe3805ec4f373421028240"
+}

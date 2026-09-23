@@ -1,0 +1,41 @@
+<script
+  type="text/rust"
+  src="../../src/demos/context.rs"
+  rust:module="crate::demos::context"
+></script>
+<template rust:component="Context">
+  <section class="demo-context" aria-label="Typed context">
+    <div class="demo-toolbar">
+      <h3>Workspace accent</h3>
+      <div class="segmented" role="group" aria-label="Accent">
+        <button
+          aria-pressed='{{ state.accent.get() == "Forest" }}'
+          on:click='state.accent.set("Forest".into())'
+        >
+          Forest</button
+        ><button
+          aria-pressed='{{ state.accent.get() == "Violet" }}'
+          on:click='state.accent.set("Violet".into())'
+        >
+          Violet
+        </button>
+      </div>
+    </div>
+    <div class="context-tree">
+      <span>Context <small>provides Accent</small></span
+      ><span aria-hidden="true">↓</span
+      ><span>Panel <small>passes no accent argument</small></span>
+    </div>
+    <div><Panel></Panel></div>
+  </section>
+</template>
+<template rust:component="Panel"
+  ><div class="context-panel"><div><Badge></Badge></div></div
+></template>
+<template rust:component="Badge"
+  ><div class="context-badge" class:violet='state.accent.get() == "Violet"'>
+    <span class="eyebrow">READ BY A NESTED BADGE</span>
+    <h3>{{ state.accent.get() }}</h3>
+    <p>One typed signal, found through the owner tree.</p>
+  </div></template
+>

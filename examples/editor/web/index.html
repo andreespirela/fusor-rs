@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fusor · Keep editing</title><link rel="icon" href="data:,">
+  <style>
+    :root { font: 17px/1.5 system-ui, sans-serif; color: #172e29; background: #f5f6f2; }
+    body { max-width: 68rem; margin: 3rem auto; padding: 0 1.25rem; }
+    nav, .actions { display: flex; gap: 1rem; flex-wrap: wrap; } a { color: #156646; }
+    h1 { margin-bottom: .5rem; } .intro { max-width: 44rem; } .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; }
+    form { background: white; padding: 1.5rem; border: 1px solid #cbd9d2; border-radius: .6rem; }
+    label { display: block; margin-top: 1rem; } input, textarea, button { font: inherit; padding: .5rem .65rem; }
+    input, textarea { box-sizing: border-box; width: 100%; border: 1px solid #81998b; border-radius: .25rem; }
+    textarea { min-height: 6rem; } button { cursor: pointer; } button:disabled { cursor: default; }
+    [aria-invalid="true"] { border-color: #b3261e; } .error { color: #a52119; min-height: 1.5em; margin: .25rem 0; }
+    .status { font-weight: 600; } .remote { border-left: .25rem solid #82ab99; padding: .6rem 1rem; background: #e7eee8; }
+    :focus-visible { outline: 3px solid #dd922e; outline-offset: 2px; }
+  </style>
+  <script type="text/rust" src="../src/app.rs" rust:module="crate::app"></script>
+</head>
+<body>
+<App state="{{ App::new(owner)? }}">
+  <main>
+    <nav aria-label="Main navigation">
+      <a id="project-link" data-fusor-link href="/editor/project">Project editor</a>
+      <a id="away-link" data-fusor-link href="/editor/away">Leave this view</a>
+    </nav>
+    <h1>Keep editing.</h1>
+    <p class="intro">Save Friday, then keep typing Monday. A response confirms the submitted draft. It preserves everything you typed afterward. Both views below share one editing session.</p>
+    <aside class="remote" aria-label="Latest server observation">
+      <p id="remote">{{ state.store.remote_text() }}</p>
+      <button id="refresh" on:click="{ state.store.projects.invalidate(&7); }">Refresh server view</button>
+      <p>Refresh updates this observation. Loading it into your draft is an explicit decision.</p>
+    </aside>
+    <p>{{ state.store.notice.get() }}</p>
+    <div id="outlet"><Router><Route path="/"><EditorPage></EditorPage></Route><Route path="/project"><EditorPage></EditorPage></Route><Route fallback><Away></Away></Route></Router></div>
+  </main>
+</App>
+</body>
+</html>

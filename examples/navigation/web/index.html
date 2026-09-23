@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fusor — owned reads and navigation</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { font: 18px/1.6 system-ui, sans-serif; color: #23342e; background: #f4f5f0; }
+    body { max-width: 46rem; margin: 4rem auto; padding: 0 1.5rem; }
+    nav { display: flex; gap: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #c7d0c6; }
+    a { color: #276d56; } main > div { margin-top: 2rem; } button, input { font: inherit; padding: .4rem .7rem; }
+    label { display: block; margin: 1.5rem 0; } output { display: block; } [aria-busy="true"] { opacity: .65; }
+    .body { white-space: pre-wrap; background: white; padding: 1.5rem; border-radius: .5rem; }
+  </style>
+  <script type="text/rust" src="../src/app.rs" rust:module="crate::app"></script>
+</head>
+<body>
+  <App state="{{ App }}">
+    <main>
+      <nav aria-label="Main navigation">
+        <a id="home-link" data-fusor-link href="{{ href(Page::Home) }}">Library</a>
+        <a id="one-link" data-fusor-link href="{{ href(Page::Article(1)) }}">First article</a>
+        <a id="two-link" data-fusor-link href="{{ href(Page::Article(2)) }}">Second article</a>
+      </nav>
+      <div id="outlet"><Router>
+<Route path="/"><Home></Home></Route>
+<Route path="/articles/:id"><ArticleRoute></ArticleRoute></Route>
+<Route fallback><NotFound></NotFound></Route>
+</Router></div>
+    </main>
+  </App>
+</body>
+</html>

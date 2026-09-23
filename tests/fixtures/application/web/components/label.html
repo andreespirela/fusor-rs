@@ -1,0 +1,17 @@
+<script type="text/rust">
+use fusor::prelude::*;
+pub struct Label { pub text: Signal<String> }
+
+pub struct LabelInputs {
+    pub text: Signal<String>,
+}
+impl fusor::dom::FromInputs for Label {
+    type Inputs = LabelInputs;
+    fn from_inputs(inputs: Self::Inputs, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
+        Ok(Self { text: inputs.text })
+    }
+}
+</script>
+<template rust:component="Label">
+  <p class="label">{{ state.text.get() }}</p>
+</template>

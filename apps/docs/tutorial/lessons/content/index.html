@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nested content</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <App state="{{ App::new() }}">
+    <main>
+      <h1>Counters inside a panel</h1>
+      <Panel>
+        <div class="panel-content">
+          <Counter count="{{ state.count.clone() }}"></Counter>
+          <Counter count="{{ state.count.clone() }}"></Counter>
+          <p>Shared total: <output>{{ state.count.get() }}</output></p>
+        </div>
+      </Panel>
+    </main>
+  </App>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "fusor-docs-libraries",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "chart.js": "4.5.1",
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

@@ -1,0 +1,35 @@
+<script type="text/rust" src="../src/pages.rs" rust:module="crate::pages"></script>
+<template rust:component="Home">
+  <section>
+    <h1>A small library</h1>
+    <p>Choose an article. Each page owns its request and its local note. Changing the revision query retains the page; navigating to another article creates a new one.</p>
+    <button id="previews" on:click="state.previews.set(vec![3, 4])">Load related previews</button>
+    <button id="clear-previews" on:click="state.previews.set(Vec::new())">Clear previews</button>
+    <ul id="preview-list"><ForEach items="{{ state.previews.get() }}" key="{{ |item| *item }}">
+<Preview item="{{ item.clone() }}"></Preview>
+</ForEach></ul>
+  </section>
+</template>
+<template rust:component="Article">
+  <section class="article">
+    <h1>Article reader</h1>
+    <output id="status" aria-live="polite">{{ state.status() }}</output>
+    <p id="article-text" class="body" aria-busy="{{ state.data.with(|data| data.is_loading()) }}">{{ state.text() }}</p>
+    <button id="refresh" on:click="state.data.refresh()">Refresh</button>
+    <label>Local note <input id="note" bind:value="state.draft"></label>
+    <button id="toggle-metadata" on:click="state.metadata_visible.update(|visible| *visible = !*visible)">Toggle metadata</button>
+    <div id="metadata"><Metadata rust:if="state.metadata_visible.get()"></Metadata></div>
+    <p id="end">End of article.</p>
+    <a id="fragment-link" data-fusor-link href="#end">Jump to end</a>
+  </section>
+</template>
+<template rust:component="Metadata">
+  <small>{{ state.text() }}</small>
+</template>
+<template rust:component="NotFound">
+  <section><h1>Page not found</h1><p>This URL does not identify a page in the library.</p></section>
+</template>
+
+<template rust:component="Preview"><li class="preview">{{ state.text() }}</li></template>
+
+<template rust:component="ArticleRoute"><div><Article rust:if="state.valid"></Article><NotFound rust:if="!state.valid"></NotFound></div></template>

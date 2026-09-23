@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fusor documentation tutorial</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/app.css">
+  <script type="text/rust" src="../src/app.rs" rust:module="crate::app"></script>
+</head>
+<body>
+  <App state="{{ App::new() }}">
+    <main>
+      <h1>From Rust state to visible HTML</h1>
+      <p>Work through Reusable HTML, Owners and cleanup, and Async data loading.</p>
+      <nav aria-label="Choose an issue">
+        <button on:click="state.selected_id.set(1)">Select issue 1</button>
+        <button on:click="state.selected_id.set(2)">Select issue 2</button>
+        <button on:click="state.selected_id.set(404)">Try a missing issue</button>
+      </nav>
+      <p>Selected issue: <output>{{ state.selected_id.get() }}</output></p>
+
+      <button on:click="state.expanded.update(|v| *v = !*v)">Toggle details</button>
+      <div><Details id="{{ state.selected_id.get() }}" rust:if="state.expanded.get()"
+           rust:key="state.selected_id.get()"></Details></div>
+
+      <h2>Keyed rows</h2>
+      <button on:click="state.items.update(|items| items.reverse())">Reverse rows</button>
+      <button on:click="state.rename_first()">Rename issue 1</button>
+      <button on:click="state.items.update(|items| items.retain(|item| item.id != 1))">Remove issue 1</button>
+      <ul><ForEach items="{{ state.items.get() }}" key="{{ |item| item.id }}">
+  <Row item="{{ item.clone() }}"></Row>
+  </ForEach></ul>
+
+      <h2>Owned work</h2>
+      <button on:click="state.watching.update(|v| *v = !*v)">Toggle owned panel</button>
+      <p class="lifecycle" role="status">{{ state.lifecycle.get() }}</p>
+      <div><Watch lifecycle="{{ state.lifecycle.clone() }}" rust:if="state.watching.get()"></Watch></div>
+
+      <h2>Async data</h2>
+      <button on:click="state.show_reader.update(|v| *v = !*v)">Toggle reader</button>
+      <div><Reader selected_id="{{ state.selected_id.clone() }}" rust:if="state.show_reader.get()"></Reader></div>
+
+      <h2>Two reads, one complete view</h2>
+      <button on:click='state.product.set("A".into())'>Choose product A</button>
+      <button on:click='state.product.set("B".into())'>Choose product B</button>
+      <p class="boundary-status" role="status">{{ format!("{:?}", state.view.status()) }}</p>
+      <button on:click="state.view.retry()">Retry product</button>
+      <Async boundary="{{ state.view }}"><section class="product">
+        <h3>Product {{ state.product.get() }}</h3>
+        <div><Price product="{{ state.product.clone() }}"></Price></div>
+        <div><Stock product="{{ state.product.clone() }}"></Stock></div>
+      </section></Async>
+    </main>
+  </App>
+</body>
+</html>

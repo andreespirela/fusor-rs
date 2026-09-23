@@ -1,0 +1,39 @@
+[package]
+name = "fusor-docs-tutorial"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+# This example is also checked as an application outside the framework workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fusor-components = { path = "../../../crates/fusor-components" , features = ["browser"] }
+fusor-core = { path = "../../../crates/fusor-core", features = ["dom"] }
+fusor-async = { path = "../../../crates/fusor-async", features = ["browser"] }
+wasm-bindgen = "=0.2.117"
+
+[build-dependencies]
+fusor-build = { path = "../../../crates/fusor-build" }
+
+[package.metadata.fusor]
+entry = "web/index.html"
+assets = "public"
+output = "dist"
+
+[package.metadata.fusor.components]
+details = "web/details.html"
+rows = "web/rows.html"
+watch = "web/watch.html"
+reader = "web/reader.html"
+pricing = "web/pricing.html"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

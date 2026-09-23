@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Benchmark research note",
+  "type": "object",
+  "required": ["title", "format", "body", "kind"],
+  "properties": {
+    "kind": {
+      "enum": ["hypothesis", "decision", "observation", "research"]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "format": {
+      "enum": ["text", "markdown"]
+    },
+    "body": {
+      "type": "string"
+    }
+  }
+}

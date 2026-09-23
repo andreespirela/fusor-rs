@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "id": "six-framework-v1",
+  "frameworks": ["fusor", "react", "svelte", "solid", "vue", "preact"],
+  "samples": 15,
+  "warmups": 3,
+  "metrics": [
+    {
+      "id": "ssr-1000",
+      "unit": "ms"
+    },
+    {
+      "id": "ssr-10000",
+      "unit": "ms"
+    },
+    {
+      "id": "initial-1000",
+      "unit": "ms"
+    },
+    {
+      "id": "initial-10000",
+      "unit": "ms"
+    },
+    {
+      "id": "single",
+      "unit": "ms"
+    },
+    {
+      "id": "bulk-1000",
+      "unit": "ms"
+    },
+    {
+      "id": "bulk-10000",
+      "unit": "ms"
+    },
+    {
+      "id": "insert",
+      "unit": "ms"
+    },
+    {
+      "id": "delete",
+      "unit": "ms"
+    },
+    {
+      "id": "swap",
+      "unit": "ms"
+    },
+    {
+      "id": "computed",
+      "unit": "ms"
+    },
+    {
+      "id": "fanout-1000",
+      "unit": "ms"
+    },
+    {
+      "id": "fanout-10000",
+      "unit": "ms"
+    },
+    {
+      "id": "fanin",
+      "unit": "ms"
+    },
+    {
+      "id": "unmount",
+      "unit": "ms"
+    },
+    {
+      "id": "events",
+      "unit": "ms"
+    },
+    {
+      "id": "hydration-1000",
+      "unit": "ms"
+    },
+    {
+      "id": "hydration-10000",
+      "unit": "ms"
+    },
+    {
+      "id": "startup",
+      "unit": "ms"
+    }
+  ],
+  "fixtures": ["benchmark workload", "hello", "todo"]
+}

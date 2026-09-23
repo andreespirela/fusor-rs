@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Nested routing</title><link rel="icon" href="data:,"></head><body>
+<App state="{{ App::default() }}"><main>
+<nav><a data-fusor-link href="/nested/">Home</a> <a data-fusor-link href="/nested/dashboard">Dashboard</a> <a data-fusor-link href="/nested/articles/hello">Article</a></nav>
+<Router>
+<Route path="/"><Home></Home></Route>
+<Route path="/dashboard/*"><Dashboard></Dashboard></Route>
+<Route path="/articles/:slug" let="params"><Article slug="{{ params.slug }}"></Article></Route>
+<Route path="/teams/:team/*" let="params"><Team slug="{{ params.team }}"></Team></Route>
+<Route path="/lexical/:slug" let="params">
+  <button id="capture-button" on:click="state.selected.set(params.slug)">{{ params.slug }}</button>
+  <output id="selected">{{ state.selected.get() }}</output>
+  <ul><ForEach items="{{ vec![1, 2] }}" key="{{ |n| *n }}"><li>{{ params.slug }} {{ item.get() }}</li></ForEach></ul>
+</Route>
+<Route path="/memory"><Memory></Memory></Route>
+<Route path="/broken"><Broken></Broken></Route>
+<Route fallback><NotFound></NotFound></Route>
+</Router>
+</main></App></body></html>
+<template rust:component="Home"><section><h1>Home</h1></section></template>
+<template rust:component="Article"><article><h1>Article {{ state.slug }}</h1></article></template>
+<template rust:component="NotFound"><section><h1>Page not found</h1></section></template>

@@ -1,0 +1,26 @@
+[package]
+name = "catalog-site"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+[features]
+grouped = []
+[dependencies]
+catalog-types = { path = "../types" }
+catalog-views = { path = "../views" }
+fusor-core.workspace = true
+fusor-islands.workspace = true
+fusor-server.workspace = true
+serde_json = "1"
+[build-dependencies]
+fusor-build.workspace = true
+[package.metadata.fusor]
+entry = "web/index.html"
+[package.metadata.fusor.delivery]
+mode = "islands"
+[package.metadata.fusor.delivery.units.cart]
+package = "catalog-cart-web"
+[package.metadata.fusor.delivery.units.designer]
+package = "catalog-designer-web"

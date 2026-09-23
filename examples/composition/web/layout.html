@@ -1,0 +1,44 @@
+<script type="text/rust">
+use fusor::prelude::*;
+use crate::shared::Theme;
+use wasm_bindgen::JsValue;
+
+pub struct Layout {
+    title: &'static str,
+    body: Signal<Option<Content>>,
+    visible: Signal<bool>,
+    reset: Signal<u32>,
+    // Named slots are ordinary typed Rust fields; this one is always present.
+    footer: Content,
+}
+impl Layout {
+    pub fn new(owner: OwnerHandle, title: &'static str, theme: Signal<String>,
+               body: Signal<Option<Content>>, visible: Signal<bool>, reset: Signal<u32>) -> Result<Self, JsValue> {
+        owner.provide::<Theme>(theme).map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(Self { title, body, visible, reset, footer: Content::new(|_| Footer) })
+    }
+}
+pub struct Footer;
+
+pub struct LayoutInputs {
+    pub title: &'static str,
+    pub theme: Signal<String>,
+    pub body: Signal<Option<Content>>,
+    pub visible: Signal<bool>,
+    pub reset: Signal<u32>,
+}
+impl fusor::dom::FromInputs for Layout {
+    type Inputs = LayoutInputs;
+    fn from_inputs(inputs: Self::Inputs, owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
+        Self::new(owner, inputs.title, inputs.theme, inputs.body, inputs.visible, inputs.reset)
+    }
+}
+</script>
+<template rust:component="Layout">
+  <section class="layout">
+    <h2>{{ state.title }}</h2>
+    <div class="body" rust:slot="state.body.get()" rust:if="state.visible.get()" rust:key="state.reset.get()"></div>
+    <footer rust:slot="state.footer.clone()"></footer>
+  </section>
+</template>
+<template rust:component="Footer"><small>Each slot owns its content.</small></template>

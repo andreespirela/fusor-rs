@@ -1,0 +1,31 @@
+[package]
+name = "fusor-async"
+description = "Keyed async reads with loading, error and cancellation for fusor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fusor", "async", "wasm", "fetch", "reactive"]
+categories = ["wasm", "web-programming", "asynchronous"]
+
+[features]
+default = []
+browser = ["dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
+
+[dependencies]
+fusor-core.workspace = true
+futures-util = { workspace = true, features = ["std"] }
+wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true, features = ["Window", "Request", "RequestInit", "Response", "AbortController", "AbortSignal"] }
+
+[dev-dependencies]
+futures-executor.workspace = true
+futures-channel.workspace = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

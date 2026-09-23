@@ -1,0 +1,36 @@
+<script
+  type="text/rust"
+  src="../../src/demos/lifecycle.rs"
+  rust:module="crate::demos::lifecycle"
+></script>
+<template rust:component="Lifecycle">
+  <section class="demo-lifecycle" aria-label="Owned timer">
+    <div class="demo-toolbar">
+      <h3>A panel with a lifetime</h3>
+      <button
+        aria-pressed="{{ state.visible.get() }}"
+        on:click="state.visible.update(|visible| *visible = !*visible)"
+      >
+        {{ if state.visible.get() { "Remove panel" } else { "Mount panel" } }}
+      </button>
+    </div>
+    <div class="timer-value">
+      <output>{{ format!("{:02}", state.ticks.get()) }}</output
+      ><span>ticks observed by the parent</span>
+    </div>
+    <div
+    ><TickingPanel ticks="{{ state.ticks.clone() }}" events="{{ state.events.clone() }}"
+      rust:if="state.visible.get()"></TickingPanel></div>
+    <p class="demo-empty" hidden="{{ state.visible.get() }}">
+      Panel removed. The last count stays here; its timer is gone.
+    </p>
+    <p class="event-log" role="log" aria-label="Lifecycle events">
+      {{ state.events.get().join("\n") }}
+    </p>
+  </section>
+</template>
+<template rust:component="TickingPanel"
+  ><p class="owned-panel">
+    <span class="status-dot"></span> This child owns the running timer.
+  </p></template
+>

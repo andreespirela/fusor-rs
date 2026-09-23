@@ -1,0 +1,53 @@
+name: Deploy site
+# Builds the landing page, docs and benchmarks with `just site` and deploys them
+# to Vercel as prebuilt files. Vercel cannot build the site itself: it has no
+# Rust toolchain. Run by hand from the Actions tab. See "Deploying the site" in
+# CONTRIBUTING.md.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deploy to production (fusor.build) or to a preview URL
+        type: choice
+        options: [production, preview]
+        default: production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Holds the VERCEL_TOKEN secret.
+    environment: vercel
+    env:
+      # The Vercel CLI reads these three from the environment.
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # The pirela team's fusor project. Not secret: they only name the project.
+      VERCEL_ORG_ID: team_hpDr5Biqje4Idy2xKGjdDRsn
+      VERCEL_PROJECT_ID: prj_Jc93RgzmHZLzyQtV9RT3Fph275gt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/docs/package-lock.json
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      # Only what `just site` uses: wasm-bindgen and the docs' npm packages.
+      - run: cargo fusor install -p fusor-landing
+      - run: npm ci --prefix apps/docs --ignore-scripts
+      - run: npm install --global vercel@59.23.2
+      - run: vercel pull --yes --environment=${{ inputs.environment }}
+      - run: just deploy ${{ inputs.environment }}

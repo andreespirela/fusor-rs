@@ -1,0 +1,22 @@
+<template rust:component="ThreeJs">
+  <script type="module" src="./threejs.js"></script>
+  <section class="demo-threejs" aria-label="Orbital garden"
+    on:gardenpick="state.selected(event)" on:gardenstatus="state.report(event)">
+    <div class="garden-scene">
+      <canvas tabindex="0" role="img" aria-label="An orbital garden of 24 sculpted ribbons. Click a ribbon, or use the arrow keys to select one."></canvas>
+      <div class="garden-heading"><span>EXPERIMENT 009 / THREE.JS × RUST</span><h3>Orbital<br />garden.</h3><p>A small universe, in bloom.</p></div>
+      <div class="garden-coordinate" aria-hidden="true">24 PETALS<br />∞ POSSIBILITIES</div>
+      <div class="garden-scene-foot"><span class="garden-selection" aria-live="polite">{{ if state.selected.get() == 0 { "CLICK A RIBBON TO EXPLORE".into() } else { format!("PETAL {:02} / SELECTED IN RUST", state.selected.get()) } }}</span><span>DRAG TO ORBIT</span></div>
+    </div>
+    <div class="garden-controls">
+      <label class="garden-bloom">Bloom <output>{{ state.bloom.get() as u32 }}%</output><input aria-label="Bloom" type="range" min="20" max="100" value="{{ state.bloom.get() }}" on:input="state.bloom_changed(event)" /></label>
+      <div class="garden-palettes" role="group" aria-label="Garden palette">
+        <button class="palette-aurora" aria-label="Aurora palette" aria-pressed='{{ state.palette.get() == "aurora" }}' on:click='state.palette.set("aurora".into())'><i></i>Aurora</button>
+        <button class="palette-ember" aria-label="Ember palette" aria-pressed='{{ state.palette.get() == "ember" }}' on:click='state.palette.set("ember".into())'><i></i>Ember</button>
+        <button class="palette-glacier" aria-label="Glacier palette" aria-pressed='{{ state.palette.get() == "glacier" }}' on:click='state.palette.set("glacier".into())'><i></i>Glacier</button>
+      </div>
+      <button class="garden-pause" aria-pressed="{{ state.paused.get() }}" on:click="state.paused.update(|value| *value = !*value)">{{ if state.paused.get() { "▶ Resume" } else { "Ⅱ Pause" } }}</button>
+    </div>
+    <p class="library-status" role="status">{{ state.status.get() }}</p>
+  </section>
+</template>

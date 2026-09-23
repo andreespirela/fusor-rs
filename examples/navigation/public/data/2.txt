@@ -1,0 +1,1 @@
+A value belongs to its request key. An older response cannot replace a newer result.

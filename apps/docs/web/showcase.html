@@ -1,0 +1,160 @@
+<script
+  type="text/rust"
+  src="../src/showcase.rs"
+  rust:module="crate::showcase"
+></script>
+<template rust:component="Gallery">
+  <article class="showcase-page" id="main-content" tabindex="-1">
+    <div class="breadcrumb">fusor <span>/</span> Showcase</div>
+    <div class="showcase-heading">
+      <div>
+        <span class="eyebrow">SMALL APPS. REAL FRAMEWORK.</span>
+        <h1>See what the HTML can do.</h1>
+        <p class="lead">
+          Open an example. Change something. Follow it back to the Rust that
+          makes it work.
+        </p>
+      </div>
+      <span class="showcase-count"
+        >{{ format!("{:02}", DEMOS.len()) }} <span>LIVE EXAMPLES</span></span
+      >
+    </div>
+    <div class="gallery-intro">
+      <span class="status-dot"></span> Every demo runs here in fusor. Rust, HTML, and JavaScript source included.
+    </div>
+    <div
+      class="showcase-grid"
+    ><ForEach items="{{ DEMOS.to_vec() }}" key="{{ |item| item.slug }}">
+<DemoCard item="{{ item.clone() }}"></DemoCard>
+</ForEach></div>
+    <div class="showcase-foot">
+      <div>
+        <h2>Start with an example. Build your own.</h2>
+        <p>
+          These are focused examples of the framework's foundations. The guides
+          explain how the pieces fit into an application.
+        </p>
+      </div>
+      <a class="text-link" data-fusor-link href="/docs/installation"
+        >Build your first app →</a
+      >
+    </div>
+  </article>
+</template>
+<template rust:component="DemoCard">
+  <a
+    class="showcase-card"
+    data-fusor-link
+    href="/docs/showcase/{{ state.item.get().slug }}"
+    data-demo="{{ state.item.get().slug }}"
+  >
+    <div class="showcase-preview" aria-hidden="true">
+      <div class="mini-window">
+        <span class="mini-dots">● ● ●</span
+        ><span class="preview-title">{{ state.item.get().preview_title }}</span
+        ><strong>{{ state.item.get().preview_value }}</strong
+        ><span class="preview-detail"
+          >{{ state.item.get().preview_detail }}</span
+        >
+      </div>
+      <span class="preview-index">{{ state.item.get().category }}</span>
+    </div>
+    <div class="showcase-card-body">
+      <h2>{{ state.item.get().title }}</h2>
+      <p>{{ state.item.get().description }}</p>
+      <span class="card-link">Open demo <span aria-hidden="true">↗</span></span>
+    </div>
+  </a>
+</template>
+<template rust:component="DemoPage">
+  <article class="showcase-page demo-page" id="main-content" tabindex="-1">
+    <a class="back-link" data-fusor-link href="/docs/showcase"
+      >← All examples</a
+    >
+    <div class="demo-heading">
+      <span class="eyebrow">{{ state.demo.category }}</span>
+      <h1>{{ state.demo.title }}</h1>
+      <p class="lead">{{ state.demo.description }}</p>
+    </div>
+    <div class="demo-layout" class:demo-layout-wide="state.demo.javascript.is_some()">
+      <section class="demo-stage" aria-label="Live demo">
+        <div class="demo-stage-bar">
+          <span
+            ><span class="status-dot"></span> LIVE DEMO
+            <small>{{ if state.demo.javascript.is_some() { "Rust + HTML + JS" } else { "Rust + HTML" } }}</small></span
+          ><button
+            class="reset-demo"
+            on:click="state.generation.update(|n| *n += 1)"
+          >
+            ↺ Reset demo
+          </button>
+        </div>
+        <div
+          class="demo-canvas"
+          rust:slot="state.content.clone()"
+          rust:key="state.generation.get()"
+        ></div>
+      </section>
+      <aside class="demo-guide">
+        <span class="eyebrow">TAKE IT FOR A SPIN</span>
+        <h2>Try this</h2>
+        <p>{{ state.demo.try_it }}</p>
+        <h2>What's happening</h2>
+        <p>{{ state.demo.explanation }}</p>
+        <a class="text-link" data-fusor-link href="{{ state.demo.guide }}"
+          >{{ state.demo.guide_label }} →</a
+        >
+      </aside>
+    </div>
+    <section class="demo-source" aria-labelledby="source-heading">
+      <div class="source-heading">
+        <div>
+          <h2 id="source-heading">Behind the demo</h2>
+          <p>The exact files compiled into this example.</p>
+        </div>
+        <div class="source-controls">
+          <div class="source-switch" role="group" aria-label="Source language">
+            <button
+              aria-pressed="{{ state.language.get() == 0 }}"
+              on:click="state.language.set(0)"
+            >
+              Rust</button
+            ><button
+              aria-pressed="{{ state.language.get() == 1 }}"
+              on:click="state.language.set(1)"
+            >
+              HTML
+            </button>
+            <button hidden="{{ state.demo.javascript.is_none() }}" aria-pressed="{{ state.language.get() == 2 }}" on:click="state.language.set(2)">JavaScript</button>
+          </div>
+          <a
+            class="text-link"
+            href="{{ state.source_url() }}"
+            target="_blank"
+            rel="noopener"
+            >Raw source ↗</a
+          >
+        </div>
+      </div>
+      <div
+      ><CodeBlock data="{{ state.source() }}"
+        rust:key="state.language.get()"></CodeBlock></div>
+      <p class="source-caption">
+        These are the complete component files. Add their Rust module to your
+        app, discover the HTML from <code>fusor.templates</code>, and keep
+        the <code>template!</code> association shown in the new examples.
+        JavaScript demos enable <code>fusor/javascript</code> and install
+        their libraries from <code>apps/docs/package.json</code>. Their JavaScript
+        file sits beside the HTML. Older examples use explicit template metadata.
+        Timer examples also use <code>gloo-timers</code>; async examples use
+        <code>fusor-async</code> and <code>public/demo-data</code>.
+      </p>
+      <a
+        class="text-link"
+        data-fusor-link
+        href="/docs/components#connection"
+        >How a Rust type connects to its HTML →</a
+      >
+    </section>
+  </article>
+</template>

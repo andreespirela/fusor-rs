@@ -1,0 +1,30 @@
+[package]
+name = "fusor-query"
+description = "Shared async queries with explicit freshness and retention for fusor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fusor", "query", "cache", "wasm", "reactive"]
+categories = ["wasm", "web-programming", "caching"]
+
+[features]
+default = []
+browser = ["dep:wasm-bindgen-futures", "dep:web-sys"]
+
+[dependencies]
+fusor-core.workspace = true
+fusor-async.workspace = true
+futures-util = { workspace = true, features = ["std"] }
+wasm-bindgen-futures = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true, features = ["Window", "Performance"] }
+
+[dev-dependencies]
+fusor-test.workspace = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

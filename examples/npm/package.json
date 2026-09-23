@@ -1,0 +1,11 @@
+{
+  "name": "fusor-npm-example", "private": true, "type": "module",
+  "scripts": { "typecheck": "tsc --noEmit --allowJs --checkJs --target ES2022 --moduleResolution bundler --module ESNext web/app.js web/components/chart.js" },
+  "dependencies": {
+    "@shoelace-style/shoelace": "2.20.1",
+    "chart.js": "4.5.1",
+    "is-lower-case": "2.0.2",
+    "async-mutex": "0.5.0"
+  },
+  "devDependencies": { "typescript": "5.9.3", "esbuild": "0.28.2" }
+}

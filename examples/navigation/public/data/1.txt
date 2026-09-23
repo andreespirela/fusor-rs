@@ -1,0 +1,1 @@
+A request belongs to a view. When the view disappears, its pending read is cancelled.

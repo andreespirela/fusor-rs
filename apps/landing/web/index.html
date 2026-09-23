@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#faf9f6" />
+    <meta
+      name="description"
+      content="fusor is a framework for building reactive web interfaces with HTML templates, native Rust modules, and direct DOM updates."
+    />
+    <meta property="og:title" content="fusor — A framework for Rust and HTML" />
+    <meta
+      property="og:description"
+      content="Write components in HTML and Rust. Compile to WebAssembly. Update the DOM with signals."
+    />
+    <meta property="og:type" content="website" />
+    <title>fusor — A framework for Rust and HTML</title>
+    <link rel="icon" href="./brand/fusor.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./landing.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <App state="{{ App::new() }}">
+      <div class="site">
+        <header class="site-header page-width">
+          <a class="brand" href="./" aria-label="fusor home">
+            <img class="brand-lockup" src="./brand/fusor-horizontal.svg" width="126" height="41" alt="" />
+          </a>
+          <nav aria-label="Main navigation">
+            <a href="/docs/">Docs</a>
+            <a href="/docs/showcase">Examples</a>
+            <a href="https://github.com/andreespirela/fusor-rs"
+              >GitHub <span aria-hidden="true">↗</span></a
+            >
+          </nav>
+        </header>
+        <main id="main" class="page-width">
+          <section class="intro" aria-labelledby="intro-title">
+            <p class="project-status">
+              <span class="status-dot" aria-hidden="true"></span>v0.1 · In development
+            </p>
+            <h1 id="intro-title">Build web interfaces<br />with <span>Rust and HTML.</span></h1>
+            <p class="intro-description">
+              fusor is a reactive framework for the web. Write HTML templates and native Rust
+              modules. Compile to WebAssembly, with signals that update the DOM directly.
+            </p>
+            <div class="intro-links">
+              <a class="primary-link" href="/docs/installation"
+                >Get started <span aria-hidden="true">→</span></a
+              >
+              <a href="/docs/html-and-rust"
+                >Read the introduction <span aria-hidden="true">↗</span></a
+              >
+            </div>
+          </section>
+          <section class="example" aria-labelledby="example-title">
+            <div class="section-heading">
+              <h2 id="example-title">Try an example.</h2>
+              <a href="{{ state.example.get().guide() }}"
+                >Read the guide <span aria-hidden="true">↗</span></a
+              >
+            </div>
+            <div class="example-switcher" role="group" aria-label="Choose an example">
+              <button
+                aria-pressed="{{ state.example.get() == Example::Search }}"
+                on:click="state.select(Example::Search)"
+              >
+                Live search
+              </button>
+              <button
+                aria-pressed="{{ state.example.get() == Example::KeyedList }}"
+                on:click="state.select(Example::KeyedList)"
+              >
+                Keyed lists
+              </button>
+              <button
+                aria-pressed="{{ state.example.get() == Example::AsyncData }}"
+                on:click="state.select(Example::AsyncData)"
+              >
+                Async data
+              </button>
+              <button
+                aria-pressed="{{ state.example.get() == Example::Counter }}"
+                on:click="state.select(Example::Counter)"
+              >
+                Counter
+              </button>
+            </div>
+            <p class="example-description">{{ state.example.get().description() }}</p>
+            <div class="example-workspace">
+              <div class="preview-panel">
+                <div class="preview-heading">
+                  <span class="status-dot" aria-hidden="true"></span>Running in your browser
+                </div>
+                <div class="example-result">
+                  <Match value="{{ state.example.get() }}">
+                    <Case pattern="Example::Search"><LiveSearch></LiveSearch></Case>
+                    <Case pattern="Example::KeyedList"><KeyedList></KeyedList></Case>
+                    <Case pattern="Example::AsyncData"><AsyncData></AsyncData></Case>
+                    <Case pattern="Example::Counter"
+                      ><div class="counter-example">
+                        <Counter></Counter>
+                        <p>One signal. One text node.<br />Click to update it.</p>
+                      </div></Case
+                    >
+                  </Match>
+                </div>
+              </div>
+              <div class="source-panel">
+                <div class="source-tabs" role="group" aria-label="Component source">
+                  <button
+                    type="button"
+                    aria-pressed="{{ !state.show_rust.get() }}"
+                    on:click="state.show_rust.set(false)"
+                  >
+                    <span class="file-symbol html-symbol" aria-hidden="true">&lt;&gt;</span>{{
+                    state.example.get().source(false).name }}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed="{{ state.show_rust.get() }}"
+                    on:click="state.show_rust.set(true)"
+                  >
+                    <span class="file-symbol" aria-hidden="true">rs</span>{{
+                    state.example.get().source(true).name }}
+                  </button>
+                  <a
+                    href="{{ state.source().href }}"
+                    target="_blank"
+                    rel="noopener"
+                    aria-label="Open the displayed source file"
+                    >↗</a
+                  >
+                </div>
+                <div class="source-content">
+                  <ForEach items="{{ vec![state.source()] }}" key="{{ |file| file.href }}"
+                    ><CodeBlock file="{{ item.clone() }}"></CodeBlock
+                  ></ForEach>
+                </div>
+              </div>
+            </div>
+            <p class="example-note">
+              These are the actual source files behind this example. The HTML defines the view; the
+              Rust module owns its state.
+            </p>
+          </section>
+          <section class="model-section" aria-labelledby="model-title">
+            <div class="section-heading">
+              <h2 id="model-title">How it works</h2>
+              <span class="section-note">A few things to know.</span>
+            </div>
+            <div class="concept-grid">
+              <article>
+                <h3>HTML templates, Rust modules</h3>
+                <p>
+                  Use HTML for markup and CSS for styling. Keep component state in Rust, with
+                  ordinary imports and typed inputs.
+                </p>
+                <a href="/docs/html-and-rust"
+                  >Templates and components <span aria-hidden="true">→</span></a
+                >
+              </article>
+              <article>
+                <h3>Fine-grained updates</h3>
+                <p>
+                  Signals track the bindings that read them. Changing a value updates the affected
+                  DOM nodes, with no virtual DOM reconciliation.
+                </p>
+                <a href="/docs/reactivity"
+                  >Signals and derived state <span aria-hidden="true">→</span></a
+                >
+              </article>
+              <article>
+                <h3>Owned work and cleanup</h3>
+                <p>
+                  Effects, listeners, and async work belong to an owner. Disposing a component
+                  cleans up the work it owns.
+                </p>
+                <a href="/docs/ownership">Owners and lifetimes <span aria-hidden="true">→</span></a>
+              </article>
+              <article>
+                <h3>Coherent async views</h3>
+                <p>
+                  An async boundary can keep the previous view visible until related reads are
+                  ready, then publish their results together.
+                </p>
+                <a href="/docs/coherent-async"
+                  >Async boundaries <span aria-hidden="true">→</span></a
+                >
+              </article>
+            </div>
+          </section>
+          <section class="getting-started" aria-labelledby="start-title">
+            <div>
+              <h2 id="start-title">Try fusor</h2>
+              <p>
+                The framework is in early development and its crates are not published yet. From a
+                <a href="https://github.com/andreespirela/fusor-rs">repository checkout</a>,
+                install the CLI:
+              </p>
+              <div class="install-command">
+                <code>cargo install --path crates/fusor-cli --locked</code
+                ><button type="button" on:click="state.copy_install()" aria-live="polite">
+                  {{ state.copy_label.get() }}
+                </button>
+              </div>
+              <p class="setup-link">
+                Then follow the <a href="/docs/installation">installation guide</a> to create and
+                run an app.
+              </p>
+            </div>
+            <aside class="further-reading" aria-label="Further reading">
+              <h3>Explore the project</h3>
+              <a href="/docs/showcase">Working examples <span aria-hidden="true">↗</span></a>
+              <a href="/docs/tooling">CLI and editor tooling <span aria-hidden="true">↗</span></a>
+              <a href="/benchmarks/"
+                >Benchmarks &amp; methodology <span aria-hidden="true">↗</span></a
+              >
+              <a href="https://github.com/andreespirela/fusor-rs"
+                >Source &amp; contributions <span aria-hidden="true">↗</span></a
+              >
+            </aside>
+          </section>
+        </main>
+        <footer class="site-footer page-width">
+          <p>fusor <span>·</span> Open source, MIT / Apache-2.0</p>
+          <a href="https://github.com/andreespirela/fusor-rs"
+            >Built with fusor <span aria-hidden="true">↗</span></a
+          >
+        </footer>
+      </div>
+    </App>
+    <noscript
+      ><p class="noscript-note">
+        The interactive example requires JavaScript and WebAssembly. You can read the component’s
+        <a href="./source/web/components/counter.html.txt">HTML</a> and
+        <a href="./source/src/counter.rs.txt">Rust source</a> as plain text.
+      </p></noscript
+    >
+  </body>
+</html>

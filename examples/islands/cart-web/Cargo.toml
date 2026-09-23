@@ -1,0 +1,20 @@
+[package]
+name = "catalog-cart-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+[lib]
+crate-type = ["cdylib", "rlib"]
+[dependencies]
+catalog-types = { path = "../types" }
+catalog-views = { path = "../views" }
+fusor-core = { workspace = true, features = ["islands"] }
+fusor-islands = { workspace = true, features = ["browser"] }
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+[build-dependencies]
+fusor-build.workspace = true
+[package.metadata.fusor]
+entry = "web/unit.html"

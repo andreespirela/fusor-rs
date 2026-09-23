@@ -1,0 +1,30 @@
+<script type="text/rust">
+use fusor::prelude::*;
+use wasm_bindgen::JsValue;
+use crate::ui::counter::Counter;
+
+pub struct Panel { count: Signal<i32> }
+
+impl Panel {
+    pub fn new(count: Signal<i32>, fail: bool) -> Result<Self, JsValue> {
+        if fail { return Err(JsValue::from_str("expected constructor failure")); }
+        Ok(Self { count })
+    }
+}
+
+pub struct PanelInputs {
+    pub count: Signal<i32>,
+    pub fail: bool,
+}
+impl fusor::dom::FromInputs for Panel {
+    type Inputs = PanelInputs;
+    fn from_inputs(inputs: Self::Inputs, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
+        Self::new(inputs.count, inputs.fail)
+    }
+}
+</script>
+<template rust:component="Panel">
+  <section class="panel">
+    <div><Counter count="{{ state.count.clone() }}"></Counter></div>
+  </section>
+</template>

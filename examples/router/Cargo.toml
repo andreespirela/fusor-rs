@@ -1,0 +1,21 @@
+[package]
+name = "fusor-router-example"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+[lib]
+crate-type = ["cdylib", "rlib"]
+[dependencies]
+fusor-core = { workspace = true, features = ["dom"] }
+fusor-components = { workspace = true, features = ["browser"] }
+fusor-router = { workspace = true, features = ["browser"] }
+wasm-bindgen.workspace = true
+[build-dependencies]
+fusor-build.workspace = true
+[package.metadata.fusor]
+entry = "web/index.html"
+output = "dist"
+base-path = "/nested/"
+history-fallback = ["/dashboard", "/articles", "/missing"]

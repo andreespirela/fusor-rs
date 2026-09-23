@@ -1,0 +1,78 @@
+# fusor landing page
+
+A fusor application for the public homepage, with selectable working examples
+and their exact highlighted HTML and Rust source files. HTML owns the layout; Rust owns the
+interactive state. There is no JavaScript UI framework or remote font dependency.
+
+## Build and preview
+
+The landing page is served at `/`, beside the docs at `/docs/` and the benchmark
+results at `/benchmarks/`. All three are built together as one site, declared in
+the workspace `Cargo.toml` under `[workspace.metadata.fusor.site]`:
+
+```sh
+just site
+just preview
+```
+
+Open <http://127.0.0.1:8080/>. `just site` runs `fusor build --site`, which
+builds each application and publishes them together into `dist/`. `just preview`
+runs `fusor preview dist`, which sends each request to the application whose
+base path matches it, with that application's own history fallback. Deploy the
+contents of `dist/` as they are.
+
+For development, `just dev` serves all three with live reload at
+<http://127.0.0.1:4173/>. To work on the page alone, run `just dev-app fusor-landing`.
+
+## Application structure
+
+- `web/index.html` and `src/app.rs`: page, example and source-file controls, and
+  the install-command clipboard interaction.
+- `src/examples.rs`: the example registry, descriptions, and related guide links.
+- `src/{search,keyed_list,async_data,counter}.rs` and matching templates under
+  `web/components`: four independently owned live components. Choosing a different
+  example disposes the previous one and starts the next with fresh state. Changing
+  source language leaves the running example intact.
+- `build/highlight.rs`, `src/code.rs`, and `web/components/code.html`: build-time
+  Syntect highlighting rendered as escaped text tokens. No runtime highlighter or
+  raw HTML injection. Colors have at least 4.5:1 contrast against the code background.
+- `public/landing.css`: responsive styles, focus states, and reduced-motion support.
+- `public/data/issues`: clearly labeled local fixtures for the async example.
+- `build.rs`: highlighting, standard HTML compilation, and exact plain-text source
+  copies. Generated copies in `public/source` are ignored by Git.
+
+Live search is the first example. It filters real guide links using a bound input.
+Keyed lists demonstrate that notes survive reordering of the actual DOM nodes.
+Async data reads a title and status independently after 250 ms and 1,000 ms delays;
+`<Async>` creates and owns its coherent boundary, retaining the previous result
+until both reads succeed. No boundary field or initialization is needed. The
+framework marks the result busy while work is pending; CSS dims it. Status and
+retry controls using an optional explicit handle are covered in the linked guide.
+Counter remains a minimal introduction to signals.
+
+The design uses system fonts, the selected fusor F emblem, an oxide accent, and a
+compact source-and-result view. Header navigation and the logo stay visible at
+phone widths. [Branding](BRANDING.md) records the selected artwork and palette.
+
+## Verification
+
+The browser checks use the repository's Playwright installation. Build first, then:
+
+```sh
+node apps/landing/tests/browser.mjs
+BROWSER=webkit node apps/landing/tests/browser.mjs
+
+cargo fmt --manifest-path apps/landing/Cargo.toml --check
+CARGO_TARGET_DIR="$PWD/apps/landing/target" \
+cargo clippy --manifest-path apps/landing/Cargo.toml \
+  --target wasm32-unknown-unknown --locked -- -D warnings
+```
+
+Each browser run starts its own temporary preview server. Tests exercise search
+and empty states, keyed input/DOM retention, async coherent publication,
+supersession, failed refresh retention and recovery, switching away during a request, counter updates,
+keyboard interaction, and all examples at five widths from 320 to 1440 pixels.
+They compare all eight highlighted files and their downloadable copies with the
+actual compiling sources, check syntax-color contrast, and validate documentation
+links. Chromium also checks the clipboard. Screenshots are saved by browser in
+the ignored `test-results` directory. Docs and benchmark builds are not required.

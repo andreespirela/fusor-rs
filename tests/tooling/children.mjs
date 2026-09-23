@@ -1,0 +1,80 @@
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {readFile} from 'node:fs/promises';
+import {resolve,extname} from 'node:path';
+import {chromium,expect} from '@playwright/test';
+import {buildPackage} from '../../scripts/build.mjs';
+await buildPackage('fusor-children');
+const root=resolve('examples/children/dist');
+const server=createServer(async(req,res)=>{
+  const path=resolve(root,'.'+(req.url==='/'?'/index.html':new URL(req.url,'http://localhost').pathname));
+  if(!path.startsWith(root+'/')){res.writeHead(404).end();return;}
+  try {const data=await readFile(path);res.setHeader('content-type',({'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm'})[extname(path)]||'text/plain');res.end(data);}catch{res.writeHead(404).end();}
+});
+await new Promise(r=>server.listen(0,'127.0.0.1',r));
+let browser;
+try {
+  browser=await chromium.launch(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{});
+  const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(`http://127.0.0.1:${server.address().port}`);
+  await expect(page.locator('#live')).toHaveText('1');
+  await expect(page.locator('.forward > .panel > #add')).toHaveCount(1);
+  await expect(page.locator('.forward > .panel')).toContainText('Hello 0!');
+  await expect(page.locator('#empty .panel')).toHaveText('');
+  await expect(page.locator('children')).toHaveCount(0);
+  // The ordinary caller supplies these children before the receiving wrapper
+  // chooses its own coherent boundary and conditional placement.
+  await expect(page.locator('#coherent-add')).toHaveText('0');
+  await page.locator('#coherent-add').evaluate(node=>window.originalCoherentButton=node);
+  await page.locator('.coherent-row').first().evaluate(node=>window.originalCoherentRow=node);
+  await page.locator('#draft').fill('retain me');
+  await page.locator('#local').click();
+  await page.locator('#add').click();
+  await expect(page.locator('.forward > .panel')).toContainText('Hello 1!');
+  await expect(page.locator('#local')).toHaveText('1');
+  await expect(page.locator('table > tbody > tr > #cell')).toHaveText('1');
+  await expect(page.locator('#draft')).toHaveValue('retain me');
+  await expect(page.locator('.row')).toHaveText(['0:1','1:2']);
+  await expect(page.locator('#coherent-add')).toHaveText('1');
+  assert(await page.locator('#coherent-add').evaluate(node=>node===window.originalCoherentButton));
+  await page.locator('.row').first().evaluate(node=>window.firstRow=node);
+  await page.locator('#reverse').click();
+  await expect(page.locator('.row')).toHaveText(['0:2','1:1']);
+  assert(await page.locator('.row').nth(1).evaluate(node=>node===window.firstRow));
+  await expect(page.locator('.coherent-row')).toHaveText(['1:0:2','1:1:1']);
+  assert(await page.locator('.coherent-row').nth(1).evaluate(node=>node===window.originalCoherentRow));
+  await page.locator('#add').evaluate(node=>window.oldButton=node);
+  await page.locator('#toggle').click();
+  await expect(page.locator('.forward')).toHaveCount(0);
+  await expect(page.locator('#live')).toHaveText('0');
+  await expect(page.locator('#coherent-forward')).toHaveCount(0);
+  await page.evaluate(()=>{window.oldButton.click();window.originalCoherentButton.click();});
+  await expect(page.locator('#cell')).toHaveText('1');
+  await page.locator('#toggle').click();
+  await expect(page.locator('.forward > .panel')).toContainText('Hello 1!');
+  await expect(page.locator('#local')).toHaveText('0');
+  await expect(page.locator('#live')).toHaveText('1');
+  await expect(page.locator('#coherent-add')).toHaveText('1');
+  assert(await page.locator('#coherent-add').evaluate(node=>node!==window.originalCoherentButton));
+  await page.locator('#local').click();
+  await page.locator('#reset').click();
+  await expect(page.locator('#local')).toHaveText('0');
+  await expect(page.locator('#live')).toHaveText('1');
+  await page.locator('#coherent-add').click();
+  await expect(page.locator('#coherent-add')).toHaveText('2');
+  await expect(page.locator('#cell')).toHaveText('2');
+  await page.locator('#coherent-add').evaluate(node=>window.retiredCoherentButton=node);
+  await page.locator('#placement').click();
+  await expect(page.locator('#coherent-add')).toHaveCount(0);
+  await expect(page.locator('.unplaced')).toHaveText('Children paused');
+  await page.evaluate(()=>window.retiredCoherentButton.click());
+  await expect(page.locator('#cell')).toHaveText('2');
+  await page.locator('#placement').click();
+  await expect(page.locator('#coherent-add')).toHaveText('2');
+  await expect(page.locator('.coherent-row')).toHaveText(['2:0:2','2:1:1']);
+  await page.evaluate(async()=>{ const api=await import(new URL('./pkg/app.js',document.querySelector('script[type=module]').src)); api.stop(); });
+  await expect(page.locator('.forward')).toHaveCount(0);
+  await expect(page.locator('#coherent-forward')).toHaveCount(0);
+  assert.deepEqual(errors,[]);
+  console.log('PASS Children: text and sibling roots, forwarding, empty and unused content, caller bindings, keyed lists, ordinary-to-coherent conditional placement, local state, teardown and remount');
+} finally { await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r)); }

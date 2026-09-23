@@ -1,0 +1,4 @@
+:root { font-family: system-ui, sans-serif; color: #24302b; background: #f6f5ef; }
+main { max-width: 42rem; margin: 4rem auto; padding: 0 1.5rem; }
+.counter { border: 1px solid #bec9c2; border-radius: .6rem; margin: 1rem 0; padding: 1rem; }
+button { font: inherit; cursor: pointer; padding: .5rem 1rem; }

@@ -1,0 +1,5 @@
+body { font: 16px system-ui; max-width: 850px; margin: 48px auto; padding: 0 24px; }
+button, sl-button { margin: 8px; }
+section { margin: 32px 0; }
+#tile { background: #3b82f6; color: white; padding: 24px; width: 120px; border-radius: 10px; }
+canvas { max-width: 100%; }

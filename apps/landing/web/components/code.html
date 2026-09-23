@@ -1,0 +1,6 @@
+<template rust:component="CodeBlock">
+  <pre
+    tabindex="0"
+    aria-label="Component source code"
+  ><code><ForEach items="{{ state.file.get().tokens.to_vec() }}" key="{{ |token| token.id }}"><span class="syntax-token" style="{{ item.get().style }}">{{ item.get().text }}</span></ForEach></code></pre>
+</template>

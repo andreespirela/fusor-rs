@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Component tags</title><link rel="icon" href="data:,"></head><body>
+<App state="{{ App::new() }}">
+  <main>
+    <h1>Authored components</h1>
+    <CounterAlias count="{{ state.count.clone() }}" initial="{{ state.count.get() }}" label="first" fail="{{ state.fail.get() }}" rust:if="state.visible.get()" rust:key="state.key.get()"></CounterAlias>
+    <crate::widgets::Counter count="{{ state.count.clone() }}" initial="{{ state.count.get() }}" label="second" fail="{{ false }}"></crate::widgets::Counter>
+    <Panel title="outer" rust:if="state.visible.get()" rust:key="state.panel_key.get()">
+      <template rust:content="body">
+        <section class="projected">
+          <p class="caller-title">{{ state.title }}</p><output class="projected-count">{{ state.count.get() }}</output>
+          <button class="projected-button" on:click="state.count.update(|value| *value += 1)">Shared</button>
+          <Badge></Badge>
+          <Panel title="inner"><template rust:content="body"><section class="nested"><span>{{ state.title }}</span><Badge></Badge></section></template></Panel>
+        </section>
+      </template>
+    </Panel>
+    <table><tbody><Row count="{{ state.count.clone() }}"></Row></tbody></table>
+    <Empty></Empty>
+    <Button></Button>
+  </main>
+</App>
+</body></html>

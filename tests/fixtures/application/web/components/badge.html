@@ -1,0 +1,22 @@
+<script type="text/rust">
+use crate::ui::app;
+pub struct Badge;
+impl Badge {
+    pub fn new() -> Self { app::static_created(); Self }
+}
+impl Drop for Badge {
+    fn drop(&mut self) { app::static_disposed(); }
+}
+
+pub struct BadgeInputs {
+}
+impl fusor::dom::FromInputs for Badge {
+    type Inputs = BadgeInputs;
+    fn from_inputs(_inputs: Self::Inputs, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
+        Ok(Self::new())
+    }
+}
+</script>
+<template rust:component="Badge">
+  <p class="badge">Static markup, owned Rust state</p>
+</template>

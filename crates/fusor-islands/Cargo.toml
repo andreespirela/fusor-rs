@@ -1,0 +1,29 @@
+[package]
+name = "fusor-islands"
+description = "Island descriptors and the browser runtime for independently delivered fusor Wasm units"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fusor", "islands", "hydration", "wasm", "ssr"]
+categories = ["wasm", "web-programming"]
+
+[features]
+default = []
+browser = ["fusor-core/islands", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys", "dep:web-sys"]
+
+[dependencies]
+fusor-core.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true, features = ["Element", "HtmlCollection", "CustomEvent", "CustomEventInit", "Event", "EventTarget"] }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

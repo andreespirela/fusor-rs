@@ -1,0 +1,5 @@
+[alias]
+fusor = "run --locked -p fusor-cli --bin fusor --"
+
+[resolver]
+incompatible-rust-versions = "fallback"

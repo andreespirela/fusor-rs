@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Coherent product view · fusor</title>
+<style>body{font:16px/1.6 system-ui;max-width:52rem;margin:3rem auto;padding:1rem;color:#17251e}button{font:inherit;margin:.25rem;padding:.4rem 1rem}section{padding:2rem;border:1px solid #a9bbae;border-radius:12px;margin-top:1rem}[aria-busy=true]{opacity:.65}</style></head>
+<body><script type="text/rust" src="../src/app.rs" rust:module="crate::app"></script>
+<App state="{{ App::new() }}">
+  <main>
+    <h1>One selection. One coherent view.</h1>
+    <p>Price and availability load independently. Their HTML publishes together.</p>
+    <nav aria-label="Select product">
+      <button id="a" on:click='state.selected.set("A".into())'>Product A</button>
+      <button id="b" on:click='state.selected.set("B".into())'>Product B</button>
+      <button id="c" on:click='state.selected.set("C".into())'>Product C</button>
+      <button id="locale" on:click='state.locale.set("fr".into())'>Français</button>
+      <button id="retry" on:click="state.view.retry()">Retry</button>
+      <button id="inert" on:click="state.inert.update(|value| *value = !*value)">Toggle authored inert</button>
+      <button id="toggle-stock" on:click="state.show_stock.update(|show| *show = !*show)">Toggle stock</button>
+      <button id="reset-stock" on:click="state.stock_version.update(|version| *version += 1)">Reset stock</button>
+      <button id="rows" on:click="state.change_rows()">Change rows</button>
+    </nav>
+    <p id="status" role="status">{{ format!("{:?}", state.view.status()) }}</p>
+    <p id="clicks">{{ state.clicks.get() }}</p>
+    <p id="mounts">{{ state.mounts.get() }}</p>
+    <Async boundary="{{ state.view }}"><section id="product" inert="{{ state.inert.get() }}">
+      <h2 id="selection">{{ state.selected.get() }} · {{ state.locale.get() }}</h2>
+      <CoherentPanel><div><Price selected="{{ state.selected.clone() }}"></Price></div>
+      <div><Stock selected="{{ state.selected.clone() }}" rust:if="state.show_stock.get()" rust:key="state.stock_version.get()"></Stock></div></CoherentPanel>
+      <ul id="items"><ForEach items="{{ state.rows.get() }}" key="{{ |item| item.id }}">
+  <Row item="{{ item.clone() }}" mounts="{{ state.mounts.clone() }}"></Row>
+  </ForEach></ul>
+      <ol id="inline-items"><ForEach items="{{ state.rows.get() }}" key="{{ |row| row.id }}"><li data-id="{{ item.get().id }}">{{ index.get() }}:{{ item.get().label }}</li></ForEach></ol>
+      <button id="inside" on:click="state.clicks.update(|count| *count += 1)">Use this product</button>
+    </section></Async>
+  </main>
+</App></body></html>

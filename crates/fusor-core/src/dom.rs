@@ -1,0 +1,393 @@
+//! Bind real DOM nodes to Rust closures. The browser creates the HTML DOM.
+//! A `Scope` owns its effects and event listeners. Drop it to unmount behavior.
+
+pub mod application;
+mod bindings;
+mod branch;
+mod children;
+pub mod coherent;
+mod commit;
+mod component;
+mod content;
+#[doc(hidden)]
+pub use children::Children;
+#[cfg(feature = "islands")]
+pub mod delivery;
+mod keyed;
+mod mount;
+mod property;
+mod reconcile;
+mod strings;
+mod target;
+#[doc(hidden)]
+pub mod text_value;
+
+#[doc(hidden)]
+pub use component::{MountGuard, MountPoint};
+pub use content::Content;
+#[doc(hidden)]
+pub use mount::TemplateNodes;
+pub use target::{ElementTarget, InputTarget};
+
+use crate::{Effect, Owner, OwnerHandle};
+use std::{cell::Cell, rc::Rc};
+pub use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, closure::Closure};
+use web_sys::{Document, Element, Event, EventTarget, HtmlTemplateElement};
+
+/// Implemented by the HTML build for each `rust:component="RustType"`.
+/// State is shared by the generated closures without requiring `Clone`.
+/// Keep the returned scope alive; dropping it releases every binding.
+pub trait Component: Sized + 'static {
+    const TEMPLATE_HASH: &'static str = "";
+    const TEMPLATE_HTML: &'static str = "";
+    fn mount(self) -> Result<Scope, JsValue>;
+
+    /// Construct state after template validation, with its own weak lifetime.
+    fn mount_with(make: impl FnOnce(OwnerHandle) -> Self) -> Result<Scope, JsValue> {
+        Self::try_mount_with(|owner| Ok(make(owner)))
+    }
+
+    fn try_mount_with(
+        make: impl FnOnce(OwnerHandle) -> Result<Self, JsValue>,
+    ) -> Result<Scope, JsValue> {
+        let scope = Self::prepare_component(None, Box::new(make))?;
+        scope.try_commit()?;
+        Ok(scope)
+    }
+
+    /// Prepare a child without starting owned work. Attach, then commit the
+    /// returned scope; dropping it rolls back preparation. Used by outlets.
+    fn prepare(
+        parent: &OwnerHandle,
+        make: impl FnOnce(OwnerHandle) -> Result<Self, JsValue>,
+    ) -> Result<Scope, JsValue> {
+        Self::prepare_component(Some(parent), Box::new(make))
+    }
+
+    /// Generated implementations validate the template before calling `make`.
+    /// The default supports hand-written components that implement `mount`.
+    #[doc(hidden)]
+    fn prepare_component(
+        parent: Option<&OwnerHandle>,
+        make: ComponentFactory<'_, Self>,
+    ) -> Result<Scope, JsValue> {
+        let owner = parent.map(Owner::child).unwrap_or_default();
+        let mut scope = make(owner.handle())?.mount()?;
+        // A hand-written mount can return a previously prepared scope. Preserve
+        // its original hydration adoption decision when replacing that owner.
+        if let Some(owned) = scope.hydration_ownership.value(&scope.owner) {
+            scope.hydration_ownership = HydrationOwnership::Preserved(owned);
+        }
+        scope.owner = owner;
+        scope.mount_ready = Rc::new(Cell::new(false));
+        scope.prepare_queue(parent);
+        Ok(scope)
+    }
+}
+
+/// Erase the factory at the generated-code boundary so recursive components do
+/// not recursively instantiate a different closure type at every nesting level.
+#[doc(hidden)]
+pub type ComponentFactory<'a, C> = Box<dyn FnOnce(OwnerHandle) -> Result<C, JsValue> + 'a>;
+
+/// A reusable component backed by a cloned HTML template, rather than existing DOM.
+/// Generated for types declared with `<template rust:component="Type">`.
+pub trait TemplateComponent: Component {}
+
+/// The explicit input contract for compiler-resolved component tags.
+///
+/// `Inputs` is a named-field struct (or a unit struct for empty tags). The
+/// compiler builds it with an ordinary struct literal: rustc checks every field,
+/// its visibility, and its type. Input expressions and this constructor run once
+/// per mounted identity, untracked. Pass signals or memos for live shared inputs.
+/// Construction is separate from rendering: browser mounts require `Component`
+/// and native rendering requires `fusor_server::Render` at the use site.
+/// `owner` is the new child's prepared owner; fallible construction rolls back.
+///
+/// Simple concrete components can use `#[derive(fusor::FromInputs)]`:
+/// mark every field `#[input]` (required from the parent) or
+/// `#[local(init = expression)]` (initialized once per instance). The derive
+/// generates a `TypeNameInputs` struct with the component's visibility and
+/// public input fields, plus this trait implementation. Original field
+/// visibility is unchanged. Unit and all-local components get unit Inputs.
+///
+/// Local expressions execute in declaration order in the generated constructor;
+/// `Self` refers to the component. They have no implicit `inputs`/`owner` names
+/// and cannot access other instance fields. Implement this trait manually for
+/// input-dependent initialization, owner-aware setup, or generic components.
+/// The derive creates neither a `new` method nor a template association.
+/// Use `#[from_inputs(crate = ::alias)]` when renaming the runtime dependency.
+pub trait FromInputs: Sized {
+    type Inputs;
+    fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue>;
+}
+
+pub fn document() -> Result<Document, JsValue> {
+    web_sys::window()
+        .and_then(|window| window.document())
+        .ok_or_else(|| JsValue::from_str("fusor requires a browser document"))
+}
+
+/// Create an element using the browser's DOM API, with no markup macro.
+pub fn element(tag: &str) -> Result<Element, JsValue> {
+    document()?.create_element(tag)
+}
+
+fn missing(selector: &str) -> JsValue {
+    JsValue::from_str(&format!("fusor: no element matches {selector:?}"))
+}
+
+struct Listener {
+    target: EventTarget,
+    event: strings::EventName,
+    callback: Closure<dyn Fn(Event)>,
+}
+
+impl Drop for Listener {
+    fn drop(&mut self) {
+        let _ = strings::remove(&self.target, &self.event, self.callback.as_ref());
+    }
+}
+
+/// A DOM island, including the lifetime of all of its reactive bindings.
+/// Dropping the scope stops behavior; existing markup remains in the document.
+#[must_use = "retain the scope to keep its DOM bindings and event listeners active"]
+pub struct Scope {
+    owner: Owner,
+    root: Element,
+    fragment: Option<MountPoint>,
+    effects: Vec<Effect>,
+    listeners: Vec<Listener>,
+    children: Vec<Scope>,
+    component_state: Option<Rc<dyn std::any::Any>>,
+    retained: Vec<Box<dyn std::any::Any>>,
+    mount_queue: Option<Rc<commit::CommitQueue>>,
+    mount_parent: Option<OwnerHandle>,
+    mount_ready: Rc<Cell<bool>>,
+    remove_on_drop: bool,
+    render_tree: Option<Rc<coherent::Tree>>,
+    hydrating: bool,
+    hydration_ownership: HydrationOwnership,
+}
+
+// Generated prepared scopes read their final owner's monotone activation bit.
+// The hand-written Component fallback can replace an already prepared owner;
+// retain that previous adoption decision just as the old private marker did.
+#[derive(Clone, Copy)]
+enum HydrationOwnership {
+    Untracked,
+    CurrentOwner,
+    Preserved(bool),
+}
+impl HydrationOwnership {
+    fn value(self, owner: &Owner) -> Option<bool> {
+        match self {
+            Self::Untracked => None,
+            Self::CurrentOwner => Some(owner.was_activated()),
+            Self::Preserved(owned) => Some(owned),
+        }
+    }
+}
+
+impl Drop for Scope {
+    fn drop(&mut self) {
+        self.owner.dispose();
+        self.effects.clear();
+        self.listeners.clear();
+        self.children.clear();
+        self.retained.clear();
+        self.component_state.take();
+        let hydrated_owned = self.hydration_ownership.value(&self.owner);
+        if !self.hydrating || hydrated_owned == Some(true) {
+            if let Some(fragment) = &self.fragment {
+                fragment.remove();
+            }
+        }
+        if self.remove_on_drop && hydrated_owned.unwrap_or(true) {
+            #[cfg(feature = "islands")]
+            delivery::dispose_tree(&self.root);
+            self.root.remove();
+        }
+    }
+}
+
+impl Scope {
+    pub fn new(root: Element) -> Self {
+        let owner = Owner::new();
+        owner.commit();
+        Self::with_owner(root, owner)
+    }
+
+    // Generated mounts allocate their final owner before resolution, but only
+    // configure its integrations after the complete descriptor has validated.
+    fn new_prepared(root: Element, parent: Option<&OwnerHandle>) -> Self {
+        Self::with_owner(root, parent.map(Owner::child).unwrap_or_default())
+    }
+
+    fn with_owner(root: Element, owner: Owner) -> Self {
+        Self {
+            owner,
+            root,
+            fragment: None,
+            effects: Vec::new(),
+            listeners: Vec::new(),
+            children: Vec::new(),
+            component_state: None,
+            retained: Vec::new(),
+            mount_queue: None,
+            mount_parent: None,
+            mount_ready: Rc::new(Cell::new(false)),
+            remove_on_drop: false,
+            render_tree: None,
+            hydrating: false,
+            hydration_ownership: HydrationOwnership::Untracked,
+        }
+    }
+
+    /// Attach to existing, ordinary HTML.
+    pub fn at(selector: &str) -> Result<Self, JsValue> {
+        Ok(Self::new(
+            document()?
+                .query_selector(selector)?
+                .ok_or_else(|| missing(selector))?,
+        ))
+    }
+
+    /// Clone a standard HTML `<template>` containing exactly one root element.
+    /// Templates contain plain HTML; Rust wires up the cloned elements.
+    pub fn from_template(selector: &str) -> Result<Self, JsValue> {
+        let template = document()?
+            .query_selector(selector)?
+            .ok_or_else(|| missing(selector))?
+            .dyn_into::<HtmlTemplateElement>()
+            .map_err(|_| JsValue::from_str("fusor: expected an HTML template"))?;
+        Self::clone_template(&template)
+    }
+
+    fn clone_template(template: &HtmlTemplateElement) -> Result<Self, JsValue> {
+        Ok(Self::new(Self::clone_template_root(template)?))
+    }
+
+    fn clone_template_root(template: &HtmlTemplateElement) -> Result<Element, JsValue> {
+        let content = template.content();
+        if content.child_element_count() != 1 {
+            return Err(JsValue::from_str(
+                "fusor: a row template needs exactly one root element",
+            ));
+        }
+        Ok(content
+            .first_element_child()
+            .expect("one template element")
+            .clone_node_with_deep(true)?
+            .dyn_into::<Element>()?)
+    }
+
+    pub fn root(&self) -> &Element {
+        &self.root
+    }
+
+    pub fn owner(&self) -> OwnerHandle {
+        self.owner.handle()
+    }
+
+    /// Stop owned work immediately, even while an integration retains the scope.
+    pub fn dispose(&self) {
+        self.owner.dispose();
+    }
+
+    #[doc(hidden)]
+    pub fn is_hydrating(&self) -> bool {
+        self.hydrating
+    }
+
+    #[doc(hidden)]
+    pub fn prepares_effects(&self) -> bool {
+        #[cfg(feature = "islands")]
+        if delivery::enabled() {
+            return true;
+        }
+        self.is_coherent()
+    }
+
+    /// Activate prepared work after insertion succeeds. Ancestors must also commit.
+    /// Logs setup failure and disposes the owner. Use [`Self::try_commit`] when
+    /// the caller must propagate a setup error.
+    pub fn commit(&self) {
+        if let Err(error) = self.try_commit() {
+            self.owner.dispose();
+            web_sys::console::error_1(&error);
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn prepare_owner(&mut self, parent: Option<&OwnerHandle>) {
+        self.owner = parent.map(Owner::child).unwrap_or_default();
+        // Repreparing a legacy scope must expire its previous readiness token.
+        self.mount_ready = Rc::new(Cell::new(false));
+        self.finish_owner_preparation(parent);
+    }
+
+    fn finish_owner_preparation(&mut self, parent: Option<&OwnerHandle>) {
+        self.prepare_queue(parent);
+        self.prepare_coherent(parent);
+        #[cfg(feature = "islands")]
+        delivery::prepare_preview_owner(&self.owner(), parent);
+        if self.hydrating {
+            // This used to be the first activation callback on the fresh owner.
+            // Owner's monotone history records the same transition without a
+            // per-scope Rc, callback registry entry and retained registration.
+            self.hydration_ownership = HydrationOwnership::CurrentOwner;
+        }
+    }
+
+    /// Retain an integration guard for this scope without replacing component state.
+    pub fn retain(&mut self, guard: impl std::any::Any) {
+        self.retained.push(Box::new(guard));
+    }
+
+    /// Insert a prepared view. Its root will be removed on drop. Does not commit.
+    pub fn attach(&mut self, container: &Element) -> Result<(), JsValue> {
+        container.append_child(&self.root)?;
+        self.remove_on_drop = true;
+        Ok(())
+    }
+
+    /// Keep component state alive even when its template has no dynamic bindings.
+    #[doc(hidden)]
+    pub fn retain_state<C: 'static>(&mut self, value: C) -> Rc<C> {
+        let state = Rc::new(value);
+        self.component_state = Some(state.clone());
+        state
+    }
+
+    /// Adopt a component attached to existing markup, retaining its lifetime.
+    pub fn adopt(&mut self, child: Scope) {
+        child.commit();
+        self.children.push(child);
+    }
+
+    /// Append a component and adopt its lifetime. Dropping the parent detaches
+    /// its bindings and removes the mounted child's root from the document.
+    pub fn mount_child(
+        &mut self,
+        target: impl ElementTarget,
+        mut child: Scope,
+    ) -> Result<(), JsValue> {
+        target.resolve(self)?.append_child(&child.root)?;
+        child.remove_on_drop = true;
+        child.try_commit()?;
+        self.children.push(child);
+        Ok(())
+    }
+
+    /// Select within this island. `:scope` addresses the root itself.
+    pub fn select(&self, selector: &str) -> Result<Element, JsValue> {
+        if selector == ":scope" || self.root.matches(selector)? {
+            return Ok(self.root.clone());
+        }
+        self.root
+            .query_selector(selector)?
+            .ok_or_else(|| missing(selector))
+    }
+}

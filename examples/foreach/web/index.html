@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>ForEach</title></head><body>
+<App state="{{ create_view(owner)? }}">
+  <main>
+  <h1>Keyed inline HTML</h1>
+  <button on:click="state.reverse()">Reverse</button><button on:click="state.insert()">Insert</button><button on:click="state.rename()">Rename</button>
+  <ul id="items"><ForEach items="{{ state.items.get() }}" key="{{ |item| item.id }}">
+    <li data-id="{{ item.get().id }}"><span class="position">{{ index.get() }}</span><span class="title">{{ item.get().title }}</span><input type="text" aria-label="Local note"><button on:click="state.remove(item.get().id)">Remove</button></li>
+  </ForEach></ul>
+  <p id="live">{{ state.live.get() }}</p>
+  <ul id="tracked"><ForEach items="{{ state.items.get() }}" key="{{ |item| item.id }}"><TrackedRow item="{{ item.clone() }}" position="{{ index.clone() }}" live="{{ state.live.clone() }}"></TrackedRow></ForEach></ul>
+  <button on:click="state.groups.update(|groups| groups.reverse())">Reverse groups</button>
+  <ul id="groups"><ForEach items="{{ state.groups.get() }}" key="{{ |group| group.id }}" item="group" index="group_index">
+  <li><h2>{{ group.get().title }}</h2><ul><ForEach items="{{ group.get().items }}" key="{{ |item| item.id }}">
+  <li class="nested">{{ group_index.get() }}.{{ index.get() }} {{ item.get().title }}</li>
+  </ForEach></ul></li></ForEach></ul>
+  </main>
+</App>
+<template rust:component="TrackedRow"><li data-id="{{ state.item.get().id }}"><span class="tracked-index">{{ state.position.get() }}</span><button on:click="state.clicks.update(|n| *n+=1)">Tap</button><output>{{ state.clicks.get() }}</output></li></template></body></html>

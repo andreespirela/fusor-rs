@@ -1,0 +1,21 @@
+[package]
+name = "fusor-component-tags-test"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fusor-components = { path = "../../../crates/fusor-components", features = ["browser"] }
+fusor-core = { path = "../../../crates/fusor-core", features = ["dom"] }
+wasm-bindgen = "=0.2.117"
+
+[build-dependencies]
+fusor-build = { path = "../../../crates/fusor-build" }
+
+[package.metadata.fusor]

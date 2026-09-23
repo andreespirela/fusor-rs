@@ -1,0 +1,27 @@
+<template rust:component="ChartJs">
+  <script type="module" src="./chartjs.js"></script>
+  <section class="demo-chartjs" aria-label="Chart.js studio"
+    on:chartselect="state.select(event)" on:chartstatus="state.report(event)">
+    <div class="chart-heading">
+      <div><span class="eyebrow">A LITTLE MOMENTUM</span><h3>Your week, in motion.</h3></div>
+      <div class="chart-total"><output>{{ state.values.get().iter().sum::&lt;f64&gt;() }}</output><span>VISITS THIS WEEK</span></div>
+    </div>
+    <div class="chart-plot"><canvas aria-label="Daily visits. Click a day to select it." role="img"></canvas></div>
+    <div class="chart-days" role="group" aria-label="Select a day">
+      <button aria-pressed="{{ state.selected.get() == Some(0) }}" on:click="state.selected.set(Some(0))">Mon</button>
+      <button aria-pressed="{{ state.selected.get() == Some(1) }}" on:click="state.selected.set(Some(1))">Tue</button>
+      <button aria-pressed="{{ state.selected.get() == Some(2) }}" on:click="state.selected.set(Some(2))">Wed</button>
+      <button aria-pressed="{{ state.selected.get() == Some(3) }}" on:click="state.selected.set(Some(3))">Thu</button>
+      <button aria-pressed="{{ state.selected.get() == Some(4) }}" on:click="state.selected.set(Some(4))">Fri</button>
+      <button aria-pressed="{{ state.selected.get() == Some(5) }}" on:click="state.selected.set(Some(5))">Sat</button>
+      <button aria-pressed="{{ state.selected.get() == Some(6) }}" on:click="state.selected.set(Some(6))">Sun</button>
+    </div>
+    <div class="chart-selection" aria-live="polite">{{ state.selection() }}</div>
+    <div class="chart-actions">
+      <button class="chart-primary" on:click="state.boost()">+12 visits</button>
+      <button on:click="state.next_week()">Next week →</button>
+      <button aria-pressed="{{ state.smooth.get() }}" on:click="state.smooth.update(|value| *value = !*value)">Smooth curve</button>
+    </div>
+    <p class="library-status" role="status">{{ state.status.get() }}</p>
+  </section>
+</template>

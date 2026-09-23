@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A small library</title>
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <App state="{{ App }}">
+    <main>
+      <nav aria-label="Library navigation">
+        <a data-fusor-link href="/">Library</a>
+        <a data-fusor-link href="/articles/42">Article 42</a>
+        <a data-fusor-link href="/articles/7">Article 7</a>
+      </nav>
+      <Router>
+        <Route path="/"><Home></Home></Route>
+        <Route path="/articles/:id" let="params">
+          <Article id="{{ params.id }}"></Article>
+        </Route>
+        <Route fallback><NotFound></NotFound></Route>
+      </Router>
+    </main>
+  </App>
+</body>
+</html>

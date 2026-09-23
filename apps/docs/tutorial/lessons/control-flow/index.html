@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Control flow</title></head>
+<body>
+  <App state="{{ App::new() }}">
+    <main>
+      <button on:click="state.show_help.update(|value| *value = !*value)">Toggle help</button>
+      <If condition="{{ state.show_help.get() }}">
+        <p>Sign in, then try the dashboard counter.</p>
+        <Else><p>Help is closed.</p></Else>
+      </If>
+
+      <button on:click="state.sign_in(&quot;Ada&quot;)">Sign in</button>
+      <button on:click="state.sign_in(&quot;Grace&quot;)">Change name</button>
+      <button on:click="state.session.set(Session::Guest)">Sign out</button>
+
+      <Match value="{{ state.session.get() }}">
+        <Case pattern="Session::Guest">
+          <p>Please sign in.</p>
+        </Case>
+        <Case pattern="Session::Authenticated { user }">
+          <h1>Welcome, {{ user.get().name }}</h1>
+          <Dashboard user="{{ user.clone() }}"></Dashboard>
+        </Case>
+      </Match>
+    </main>
+  </App>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A keyed list</title>
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <App state="{{ App::new() }}">
+    <main>
+      <h1>Reading list</h1>
+      <button on:click="state.items.update(|items| items.reverse())">Reverse</button>
+      <ul>
+        <ForEach items="{{ state.items.get() }}" key="{{ |item| item.id }}">
+          <li>
+            <span>{{ index.get() + 1 }}. {{ item.get().title }}</span>
+            <label>Note <input></label>
+            <button on:click="state.remove(item.get().id)">Remove</button>
+          </li>
+        </ForEach>
+      </ul>
+    </main>
+  </App>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[package]
+name = "fusor-consumer-test"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+# A separate Cargo application: no dependency on the playground or its workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fusor-components = { path = "../../../crates/fusor-components" }
+fusor-core = { path = "../../../crates/fusor-core", features = ["dom"] }
+wasm-bindgen = "=0.2.117"
+
+[build-dependencies]
+fusor-build = { path = "../../../crates/fusor-build" }

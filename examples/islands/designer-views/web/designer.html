@@ -1,0 +1,15 @@
+<script type="text/rust" src="../src/lib.rs" rust:module="crate"></script>
+<template rust:component="DesignerView"><section class="designer">
+  <h2>{{ state.title }}</h2>
+  <button class="choose-a" on:click='state.selection.set("A".into())'>Design A</button>
+  <button class="choose-b" on:click='state.selection.set("B".into())'>Design B</button>
+  <button class="retry" on:click="state.boundary.retry()">Retry</button>
+  <p class="status">{{ format!("{:?}", state.boundary.status()) }}</p>
+  <Async boundary="{{ state.boundary }}"><div>
+    <h3 class="selection">{{ state.selection.get() }}</h3>
+    <div><Price selection="{{ state.selection.clone() }}"></Price></div>
+    <div><Stock selection="{{ state.selection.clone() }}"></Stock></div>
+  </div></Async>
+</section></template>
+<template rust:component="Price"><Await value="{{ state.value }}" let="result"><p class="price">{{ result.as_str() }}</p></Await></template>
+<template rust:component="Stock"><Await value="{{ state.value }}" let="result"><p class="stock">{{ result.as_str() }}</p></Await></template>

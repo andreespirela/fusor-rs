@@ -1,0 +1,6 @@
+<template rust:component="Dashboard" rust:render="shared">
+  <section class="dashboard">
+    <p>{{ state.user.get().name }}</p>
+    <button class="count" on:click="state.count.update(|n| *n += 1)">{{ state.count.get() }}</button>
+  </section>
+</template>

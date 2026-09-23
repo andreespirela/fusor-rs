@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reusable HTML test</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./app.css">
+  <script type="text/rust">
+use fusor::prelude::*;
+use crate::ui::panel::Panel;
+use std::cell::{Cell, RefCell};
+use wasm_bindgen::prelude::*;
+
+struct App {
+    count: Signal<i32>,
+    visible: Signal<bool>,
+    key: Signal<u32>,
+    fail: Signal<bool>,
+}
+
+thread_local! {
+    static APP: RefCell<Option<Scope>> = const { RefCell::new(None) };
+    static LIVE: Cell<usize> = const { Cell::new(0) };
+    static STATIC_LIVE: Cell<usize> = const { Cell::new(0) };
+    static COUNT: Signal<i32> = signal(0);
+}
+
+pub fn created() { LIVE.with(|n| n.set(n.get() + 1)); }
+pub fn disposed() { LIVE.with(|n| n.set(n.get() - 1)); }
+pub fn static_created() { STATIC_LIVE.with(|n| n.set(n.get() + 1)); }
+pub fn static_disposed() { STATIC_LIVE.with(|n| n.set(n.get() - 1)); }
+
+#[wasm_bindgen]
+pub fn live() -> usize { LIVE.with(Cell::get) }
+
+#[wasm_bindgen]
+pub fn live_static() -> usize { STATIC_LIVE.with(Cell::get) }
+
+#[wasm_bindgen]
+pub fn set_count(value: i32) { COUNT.with(|n| n.set(value)); }
+
+#[wasm_bindgen]
+pub fn recursive_mount() -> Result<(), JsValue> {
+    let _scope = crate::ui::recursive::Recursive.mount()?;
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub fn unmount() { APP.with(|app| { app.borrow_mut().take(); }); }
+
+#[wasm_bindgen(start)]
+pub fn start() -> Result<(), JsValue> { mount() }
+
+#[wasm_bindgen]
+pub fn mount() -> Result<(), JsValue> {
+    unmount();
+    let scope = App {
+        count: COUNT.with(Clone::clone),
+        visible: signal(true),
+        key: signal(0),
+        fail: signal(false),
+    }.mount()?;
+    APP.with(|app| *app.borrow_mut() = Some(scope));
+    Ok(())
+}
+  </script>
+</head>
+<body>
+  <main rust:component="App">
+    <h1>{{ crate::shared::heading() }}</h1>
+    <output id="total">{{ state.count.get() }}</output>
+    <button id="toggle" on:click="state.visible.update(|v| *v = !*v)">Toggle</button>
+    <button id="replace" on:click="state.key.update(|n| *n += 1)">Replace</button>
+    <button id="fail" on:click="{ state.fail.set(true); state.key.update(|n| *n += 1); }">Fail replacement</button>
+    <button id="recover" on:click="{ state.fail.set(false); state.key.update(|n| *n += 1); }">Recover</button>
+    <div id="first"><Panel count="{{ state.count.clone() }}" fail="{{ state.fail.get() }}" rust:if="state.visible.get()" rust:key="state.key.get()"></Panel></div>
+    <div id="second"><Panel count="{{ state.count.clone() }}" fail="{{ false }}"></Panel></div>
+  </main>
+</body>
+</html>

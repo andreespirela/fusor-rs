@@ -1,0 +1,360 @@
+//! Owned patch preparation for generated coherent HTML. No application closure
+//! runs between the first and last DOM patch.
+mod interaction;
+mod structure;
+
+use interaction::BlockingOverlay;
+
+use super::{JsValue, Listener, Scope};
+use crate::{
+    ContextKey, OwnerHandle, batch,
+    coherence::{AsyncBoundary, Attempt, Publication},
+};
+use std::{any::Any, cell::RefCell, collections::BTreeMap, rc::Rc};
+use wasm_bindgen::{JsCast, closure::Closure};
+use web_sys::{Element, Event, Text};
+
+type Renderer = dyn Fn(&mut Frame<'_>) -> Result<(), String>;
+struct Context;
+impl ContextKey for Context {
+    type Value = BoundaryContext;
+}
+
+#[derive(Clone)]
+struct BoundaryContext {
+    boundary: AsyncBoundary,
+    overlay: BlockingOverlay,
+}
+
+// Element and mount-point identifiers have separate compiler namespaces.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum SlotId {
+    List(usize),
+    Component(usize),
+    Children(usize),
+    Branch(usize),
+}
+
+pub(super) struct Tree {
+    root: Element,
+    fragment: Option<super::MountPoint>,
+    context: BoundaryContext,
+    owner: OwnerHandle,
+    boundary: AsyncBoundary,
+    renderer: RefCell<Option<Rc<Renderer>>>,
+    slots: RefCell<BTreeMap<SlotId, Rc<dyn Any>>>,
+    listeners: RefCell<Vec<Listener>>,
+}
+
+// Query only inherited metadata. Integration setup still follows successful
+// native validation in the descriptor preparation entry point.
+pub(super) fn parent_is_coherent(parent: Option<&OwnerHandle>) -> bool {
+    parent
+        .and_then(|owner| owner.context::<Context>())
+        .is_some()
+}
+
+impl Scope {
+    pub(super) fn prepare_coherent(&mut self, parent: Option<&OwnerHandle>) {
+        self.render_tree = parent
+            .and_then(|owner| owner.context::<Context>())
+            .map(|context| {
+                Rc::new(Tree {
+                    owner: self.owner(),
+                    root: self.root().clone(),
+                    fragment: self.fragment.clone(),
+                    context: (*context).clone(),
+                    boundary: context.boundary.clone(),
+                    renderer: RefCell::new(None),
+                    slots: RefCell::new(BTreeMap::new()),
+                    listeners: RefCell::new(Vec::new()),
+                })
+            });
+    }
+
+    #[doc(hidden)]
+    pub fn is_coherent(&self) -> bool {
+        self.render_tree.is_some()
+    }
+
+    #[doc(hidden)]
+    pub fn set_coherent_renderer(
+        &mut self,
+        render: impl Fn(&mut Frame<'_>) -> Result<(), String> + 'static,
+    ) {
+        *self
+            .render_tree
+            .as_ref()
+            .expect("coherent scope")
+            .renderer
+            .borrow_mut() = Some(Rc::new(render));
+    }
+
+    #[doc(hidden)]
+    pub fn async_region(
+        &mut self,
+        root: &Element,
+        boundary: AsyncBoundary,
+        render: impl Fn(&mut Frame<'_>) -> Result<(), String> + 'static,
+    ) -> Result<(), JsValue> {
+        if self.is_coherent() {
+            return Err(JsValue::from_str(
+                "nested coherent boundaries are unsupported",
+            ));
+        }
+        #[cfg(feature = "islands")]
+        super::delivery::register_preview_boundary(&self.owner(), &boundary);
+        let mut region = Scope::new(root.clone());
+        region.prepare_owner(Some(&self.owner()));
+        let overlay = BlockingOverlay::new(root);
+        let context = BoundaryContext {
+            boundary: boundary.clone(),
+            overlay: overlay.clone(),
+        };
+        region
+            .owner()
+            .provide::<Context>(context.clone())
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        region.render_tree = Some(Rc::new(Tree {
+            root: root.clone(),
+            fragment: None,
+            context,
+            owner: region.owner(),
+            boundary: boundary.clone(),
+            renderer: RefCell::new(Some(Rc::new(render))),
+            slots: RefCell::new(BTreeMap::new()),
+            listeners: RefCell::new(Vec::new()),
+        }));
+        let tree = region.render_tree.as_ref().expect("region").clone();
+        let captured_root = root.clone();
+        let mounted = boundary
+            .attach(&region.owner(), move |attempt| {
+                let mut publication = Prepared::default();
+                visit(&tree, attempt, &mut publication)?;
+                publication.roots.push(captured_root.clone());
+                Ok(Box::new(publication))
+            })
+            .map_err(|error| JsValue::from_str(&error))?;
+        region.retain(mounted);
+        overlay.install(&mut region, boundary)?;
+        region.retain(overlay);
+        // Region has no ordinary DOM side effects. New descendants remain
+        // prepared until their publication's finish phase.
+        region.try_commit()?;
+        self.children.push(region);
+        Ok(())
+    }
+}
+
+fn error(value: JsValue) -> String {
+    value.as_string().unwrap_or_else(|| format!("{value:?}"))
+}
+fn allowed(element: &Element) -> Result<(), String> {
+    if element.local_name().contains('-')
+        || element.has_attribute("is")
+        || element.namespace_uri().as_deref() != Some("http://www.w3.org/1999/xhtml")
+    {
+        return Err(
+            "custom elements and foreign DOM cannot participate in coherent patches".into(),
+        );
+    }
+    Ok(())
+}
+
+enum Patch {
+    Inert(BoundaryContext, bool, bool),
+    Text(Text, String, String),
+    Attribute(Element, String, Option<String>, Option<String>),
+    Class(Element, String, bool, bool),
+}
+impl Patch {
+    fn apply(&self, reverse: bool) -> Result<(), String> {
+        match self {
+            Self::Inert(context, next, old) => context
+                .overlay
+                .set_authored_inert(if reverse { *old } else { *next })
+                .map_err(error),
+            Self::Text(node, next, old) => {
+                node.set_data(if reverse { old } else { next });
+                Ok(())
+            }
+            Self::Attribute(node, name, next, old) => match if reverse { old } else { next } {
+                Some(value) => node.set_attribute(name, value).map_err(error),
+                None => node.remove_attribute(name).map_err(error),
+            },
+            Self::Class(node, name, next, old) => node
+                .class_list()
+                .toggle_with_force(name, if reverse { *old } else { *next })
+                .map(|_| ())
+                .map_err(error),
+        }
+    }
+}
+
+trait Structure {
+    fn validate(&self) -> Result<(), String>;
+    fn apply(&self) -> Result<(), String>;
+    fn finish(self: Box<Self>);
+}
+#[derive(Default)]
+struct Prepared {
+    patches: Vec<Patch>,
+    structures: Vec<Box<dyn Structure>>,
+    listeners: Vec<(Rc<Tree>, Vec<Listener>)>,
+    roots: Vec<Element>,
+    targets: Vec<(Rc<Tree>, web_sys::Node)>,
+}
+impl Publication for Prepared {
+    fn validate(&self) -> Result<(), String> {
+        for root in &self.roots {
+            allowed(root)?;
+        }
+        for (root, target) in &self.targets {
+            if !root.fragment.as_ref().map_or_else(
+                || root.root.contains(Some(target)),
+                |point| point.contains(target),
+            ) {
+                return Err("coherent target was moved outside its component".into());
+            }
+        }
+        for structure in &self.structures {
+            structure.validate()?;
+        }
+        Ok(())
+    }
+    fn apply(&mut self) -> Result<(), String> {
+        for (index, patch) in self.patches.iter().enumerate() {
+            if let Err(error) = patch.apply(false) {
+                for patch in self.patches[..index].iter().rev() {
+                    let _ = patch.apply(true);
+                }
+                return Err(error);
+            }
+        }
+        for structure in &self.structures {
+            structure.apply()?;
+        }
+        Ok(())
+    }
+    fn finish(self: Box<Self>) {
+        for (tree, listeners) in self.listeners {
+            let old = tree.listeners.replace(listeners);
+            drop(old);
+        }
+        for structure in self.structures {
+            structure.finish();
+        }
+    }
+}
+
+#[doc(hidden)]
+pub struct Frame<'a> {
+    pub attempt: &'a Attempt,
+    tree: &'a Rc<Tree>,
+    publication: &'a mut Prepared,
+    listeners: Vec<Listener>,
+}
+fn visit(tree: &Rc<Tree>, attempt: &Attempt, publication: &mut Prepared) -> Result<(), String> {
+    if tree.owner.is_disposed() {
+        return Err("coherent component disposed during preparation".into());
+    }
+    let renderer = tree
+        .renderer
+        .borrow()
+        .clone()
+        .ok_or("component has no generated coherent renderer")?;
+    let mut frame = Frame {
+        attempt,
+        tree,
+        publication,
+        listeners: Vec::new(),
+    };
+    renderer(&mut frame)?;
+    let listeners = std::mem::take(&mut frame.listeners);
+    frame.publication.listeners.push((tree.clone(), listeners));
+    Ok(())
+}
+
+impl Frame<'_> {
+    pub fn reject(&self, reason: &str) -> Result<(), String> {
+        Err(reason.into())
+    }
+    pub fn text(&mut self, node: &Text, value: impl ToString) -> Result<(), String> {
+        self.publication
+            .targets
+            .push((self.tree.clone(), node.clone().into()));
+        let next = value.to_string();
+        let old = node.data();
+        if next != old {
+            self.publication
+                .patches
+                .push(Patch::Text(node.clone(), next, old));
+        }
+        Ok(())
+    }
+    pub fn attr(&mut self, node: &Element, name: &str, next: Option<String>) -> Result<(), String> {
+        allowed(node)?;
+        self.publication
+            .targets
+            .push((self.tree.clone(), node.clone().into()));
+        if name == "inert" && self.tree.context.overlay.owns_root(node) {
+            let old = self.tree.context.overlay.authored_inert();
+            self.publication.patches.push(Patch::Inert(
+                self.tree.context.clone(),
+                next.is_some(),
+                old,
+            ));
+            return Ok(());
+        }
+        let old = node.get_attribute(name);
+        if old != next {
+            self.publication.patches.push(Patch::Attribute(
+                node.clone(),
+                name.to_owned(),
+                next,
+                old,
+            ));
+        }
+        Ok(())
+    }
+    pub fn class(&mut self, node: &Element, name: &str, next: bool) -> Result<(), String> {
+        allowed(node)?;
+        if name.is_empty() || name.chars().any(char::is_whitespace) {
+            return Err("invalid coherent class name".into());
+        }
+        self.publication
+            .targets
+            .push((self.tree.clone(), node.clone().into()));
+        let old = node.class_list().contains(name);
+        if old != next {
+            self.publication
+                .patches
+                .push(Patch::Class(node.clone(), name.to_owned(), next, old));
+        }
+        Ok(())
+    }
+    pub fn on(
+        &mut self,
+        node: &Element,
+        event: &str,
+        handler: impl FnMut(Event) + 'static,
+    ) -> Result<(), String> {
+        allowed(node)?;
+        let owner = self.tree.owner.clone();
+        let boundary = self.tree.boundary.clone();
+        let handler = RefCell::new(handler);
+        let callback = Closure::wrap(Box::new(move |event| {
+            if owner.is_active() && boundary.is_interactive() {
+                batch(|| (handler.borrow_mut())(event));
+            }
+        }) as Box<dyn Fn(Event)>);
+        node.add_event_listener_with_callback(event, callback.as_ref().unchecked_ref())
+            .map_err(error)?;
+        self.listeners.push(Listener {
+            target: node.clone().into(),
+            event: event.into(),
+            callback,
+        });
+        Ok(())
+    }
+}

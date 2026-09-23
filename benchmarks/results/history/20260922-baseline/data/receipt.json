@@ -1,0 +1,355 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "5f7c8ef8f79f63c0079d570abe9334ca5e10d738c6e196f868286e83da951c82",
+  "cargoReceipt": {
+    "schema": 1,
+    "nativeSsr": "/Users/andrespirela/workspace/rust-front/target/release/ssr"
+  },
+  "artifacts": [
+    {
+      "path": "benchmarks/dist/build.json",
+      "bytes": 96,
+      "sha256": "2c29489a891778b2d62a3967e182e859bb2d5a7ab7096c97cdf71900c83284b1"
+    },
+    {
+      "path": "benchmarks/dist/preact/assets/index-BR2pIli5.js",
+      "bytes": 21323,
+      "sha256": "340f219c541f49aa20f5aa430435c03fec589a1be10b5cf8f1fc8c3f13c390ae"
+    },
+    {
+      "path": "benchmarks/dist/preact/hello/assets/index-CZNPUv8u.js",
+      "bytes": 11438,
+      "sha256": "5d4f59a7831495a8c6481ffb8d3b0fa0d9b7503e48eab902f7a6244dc811d7a1"
+    },
+    {
+      "path": "benchmarks/dist/preact/hello/index.html",
+      "bytes": 305,
+      "sha256": "c10cdbafbcba8bed9ca200dca99f6cfc54a966f5f778d8ab3610ab52abf2d486"
+    },
+    {
+      "path": "benchmarks/dist/preact/index.html",
+      "bytes": 299,
+      "sha256": "bfc63f933eb606a7b8f0b61597613d75333d99fda647d4db6e1801c04f6d5f90"
+    },
+    {
+      "path": "benchmarks/dist/preact/todo/assets/index-TLPRZ8Up.js",
+      "bytes": 14853,
+      "sha256": "118c893f4271ccde9cc97c8b47f13b17a1ccb62fa3dc26170ee059852c871023"
+    },
+    {
+      "path": "benchmarks/dist/preact/todo/index.html",
+      "bytes": 303,
+      "sha256": "374a8bb0643b8475973c2cd0e64d89170301c68d6219b0f4aa0878de1994081a"
+    },
+    {
+      "path": "benchmarks/dist/react/assets/index-BG2gXAtA.js",
+      "bytes": 222482,
+      "sha256": "16958c3a6be96b0ebc1a3b367eecd2a1ff07662ec5c2f794e2632d98cdf8473a"
+    },
+    {
+      "path": "benchmarks/dist/react/hello/assets/index-Dqcy6bvd.js",
+      "bytes": 219561,
+      "sha256": "e08ba294beab43e8cfa8b8ff0a27213f42e942d2a05886929430e8d20f6e5a3b"
+    },
+    {
+      "path": "benchmarks/dist/react/hello/index.html",
+      "bytes": 303,
+      "sha256": "2c67d0ad0e1afb6c555d7a54d358c21538517a3b5d96eee569c6d3a639299079"
+    },
+    {
+      "path": "benchmarks/dist/react/index.html",
+      "bytes": 297,
+      "sha256": "8c9f4a03675af3d28692e24a053018314acd3831d1ed47ace52e7e13ceb89a53"
+    },
+    {
+      "path": "benchmarks/dist/react/todo/assets/index-C5RF3EzQ.js",
+      "bytes": 221245,
+      "sha256": "1da334087554e0be443e5584a519a8e302c16d7df80b6871b97e38aceaf20e7d"
+    },
+    {
+      "path": "benchmarks/dist/react/todo/index.html",
+      "bytes": 301,
+      "sha256": "68fe9e8eb7032d2eebd8b092b0f6a5638bf618dc382e5eddf39d40f07e0953f6"
+    },
+    {
+      "path": "benchmarks/dist/server/preact/render.js",
+      "bytes": 1853,
+      "sha256": "70b0df9e2094986cc9f19b7fb77108fd368ca153cecac930bdfaf2c2b9c8f634"
+    },
+    {
+      "path": "benchmarks/dist/server/react/render.js",
+      "bytes": 1919,
+      "sha256": "b23eb655d167962839c15be4526b5928ab6e67326e0eb0ab90c38358640fa34b"
+    },
+    {
+      "path": "benchmarks/dist/server/solid/render.js",
+      "bytes": 1673,
+      "sha256": "d895de694f3fece57ff95ee53a947cc050266ccccdbda4409d2934dfc43f5211"
+    },
+    {
+      "path": "benchmarks/dist/server/svelte/render.js",
+      "bytes": 14103,
+      "sha256": "847e291e9a5b7bfbd6b4c7a5b64af34a4747bdfe03c94d80d658348dfc6914d0"
+    },
+    {
+      "path": "benchmarks/dist/server/vue/render.js",
+      "bytes": 1584,
+      "sha256": "68b2f045fb39daa32fb18b615cea8a1c3961217f7a3cda5b4e3763553529c623"
+    },
+    {
+      "path": "benchmarks/dist/solid/assets/index-C733GOVx.js",
+      "bytes": 14861,
+      "sha256": "84906bbd8ae7df7131a4f67f106c1412c2e9c6f72e6e72d420caf5a47c240de2"
+    },
+    {
+      "path": "benchmarks/dist/solid/hello/assets/index-BwACtK4S.js",
+      "bytes": 9768,
+      "sha256": "4239a71544cd12df95df11cadf371123be492da324fb70be6b3ee486715c33f6"
+    },
+    {
+      "path": "benchmarks/dist/solid/hello/index.html",
+      "bytes": 303,
+      "sha256": "9163926c1ea3c98f63b49a8a047e0a37b28fb2cfed4ed970c7cc6c55bea5b315"
+    },
+    {
+      "path": "benchmarks/dist/solid/index.html",
+      "bytes": 297,
+      "sha256": "aae04851e872f4a79a6229106ed4b2fd5b583cc1cf4809d5c6656e3ffdfac8fc"
+    },
+    {
+      "path": "benchmarks/dist/solid/todo/assets/index-CfL7crEc.js",
+      "bytes": 17125,
+      "sha256": "887c25cfc5ccae968b4e2f99410df8652a6561dc1f3ff18ad7bed18770ca648e"
+    },
+    {
+      "path": "benchmarks/dist/solid/todo/index.html",
+      "bytes": 301,
+      "sha256": "a2a25455430977e6b742e7241fcfe1c30b33d104a6c3fdb7e1f59cb2f7a6194f"
+    },
+    {
+      "path": "benchmarks/dist/svelte/assets/index-CVq1nB45.js",
+      "bytes": 37697,
+      "sha256": "cb263cbed34ad7d7b3ed58c233907bde24c64a265e34649b4425e7b1adb2e1c4"
+    },
+    {
+      "path": "benchmarks/dist/svelte/hello/assets/index-CMmBY3cH.js",
+      "bytes": 22790,
+      "sha256": "1e6a6c96d9d28edea4f353cbae88bd675e0ceb45ab6fb0d99d82ebab2426cabd"
+    },
+    {
+      "path": "benchmarks/dist/svelte/hello/index.html",
+      "bytes": 305,
+      "sha256": "ed9f33c9684c5107a711272f9310896d74996c440e3e8c8356819461c9bce4e4"
+    },
+    {
+      "path": "benchmarks/dist/svelte/index.html",
+      "bytes": 299,
+      "sha256": "5caad0804c71b5ad65739a9beae7d5da758b11fc35610a857287611326684305"
+    },
+    {
+      "path": "benchmarks/dist/svelte/todo/assets/index-oOzPs_8y.js",
+      "bytes": 35728,
+      "sha256": "5694dccbf9d85011b3a3429fdd8bfa668a5ddd6138280604a86a1d427a865127"
+    },
+    {
+      "path": "benchmarks/dist/svelte/todo/index.html",
+      "bytes": 303,
+      "sha256": "ade94bc4b691ed155a1ec0533da4d79bb84f8e69daa3bade42a12d2aa736db8d"
+    },
+    {
+      "path": "benchmarks/dist/vue/assets/index-BXoGpxqa.js",
+      "bytes": 68384,
+      "sha256": "b6f381783ae3d6210b66f982c1a1e9446718955c3c3e7f4fe8717e9e03e715f6"
+    },
+    {
+      "path": "benchmarks/dist/vue/hello/assets/index-DcGJai30.js",
+      "bytes": 60434,
+      "sha256": "ab21e02284006dd980e31bc4b8bd5217c98fd08114a15687dc1e2b59fd648a9b"
+    },
+    {
+      "path": "benchmarks/dist/vue/hello/index.html",
+      "bytes": 299,
+      "sha256": "2b34b0659d9c1b539ca98fd031ff26d7f35e259da2952d78713539ecaca8bfae"
+    },
+    {
+      "path": "benchmarks/dist/vue/index.html",
+      "bytes": 293,
+      "sha256": "ee2d04ce138f838c784e5607c02d3c6dea61d41f1c8edba3539eaaf7293e8812"
+    },
+    {
+      "path": "benchmarks/dist/vue/todo/assets/index-BvbBfT1n.js",
+      "bytes": 65668,
+      "sha256": "b9717948cabc83065965011c8f1225104979242b24a95e6bc29fd5b5ce267e43"
+    },
+    {
+      "path": "benchmarks/dist/vue/todo/index.html",
+      "bytes": 297,
+      "sha256": "dce74a317c4df34023524f5d97c9e4e9539fe2f9503cb65c63280af9385eb6c1"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/.fusor-output.json",
+      "bytes": 133,
+      "sha256": "48efef5d7a0ed4a8bd81edbcd16f8ec044c95b6f513f69468a1100c633426c7e"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790104981529591000-75581/boot.js",
+      "bytes": 437,
+      "sha256": "e8110f73a474cba22778ddd8927a4c5d507a3fa379be7f0bc4b16b62afcf7caa"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790104981529591000-75581/pkg/app.d.ts",
+      "bytes": 1477,
+      "sha256": "a14ee8822da7213c7b8d5c9361d61524ddeb8931f6bc4489102ba2c166820dae"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790104981529591000-75581/pkg/app.js",
+      "bytes": 18653,
+      "sha256": "bb9b8faafc0141537fd91812e96de02dd9eb2fb8107d6e8239ee03eb0205fde2"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790104981529591000-75581/pkg/app_bg.wasm",
+      "bytes": 124291,
+      "sha256": "54b79231ffa5500454034d15e0921373a0fb65b7adeb4dd42a0fc06e6915eb2d"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790104981529591000-75581/pkg/app_bg.wasm.d.ts",
+      "bytes": 484,
+      "sha256": "6bc68c44a426a993d33cb4f604db464e986835e5b8f4e2202d9529613934ffc5"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790104981529591000-75581/pkg/snippets/fusor-e2c0b909ca38556f/inline0.js",
+      "bytes": 222,
+      "sha256": "7d4311fc461602293aacd393194652bb84024c49443d049959aa62eb700d7366"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790104981529591000-75581/pkg/snippets/fusor-e2c0b909ca38556f/inline1.js",
+      "bytes": 2333,
+      "sha256": "ce7e9129649e73b61648e4211caa35fb53b94991bf884d4c3cc6b6f72f28b446"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790104981529591000-75581/pkg/snippets/fusor-e2c0b909ca38556f/src/dom/mount/flat.js",
+      "bytes": 9652,
+      "sha256": "d9f71cdf81d902a1477aefc5a65895fe6bc9a206d44e30a7fafb39aed3c0e93c"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/index.html",
+      "bytes": 426,
+      "sha256": "70cef2d592423bbbb280366478bb95f243ddbd9ff32b8fc0a78f61c40cc7fe7e"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/.fusor-output.json",
+      "bytes": 132,
+      "sha256": "457376c8d3307251af068fd1d7345ba74422f3fd27a3f637aecc6b1b4527b8f8"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790104985785258000-75642/boot.js",
+      "bytes": 437,
+      "sha256": "e8110f73a474cba22778ddd8927a4c5d507a3fa379be7f0bc4b16b62afcf7caa"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790104985785258000-75642/pkg/app.d.ts",
+      "bytes": 1685,
+      "sha256": "78130005580b68c002ef195fa56a586d0d7abc6ffc56418e141c05b79233bded"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790104985785258000-75642/pkg/app.js",
+      "bytes": 27622,
+      "sha256": "730798f57f471dd014a25eeb7f65e858bd9e880bb8f0351798afa567745365fa"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790104985785258000-75642/pkg/app_bg.wasm",
+      "bytes": 253047,
+      "sha256": "4a5ea229fee192ff55fbf6c624f2637ce35d71b9ece8bd2992aa4da9a81278f8"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790104985785258000-75642/pkg/app_bg.wasm.d.ts",
+      "bytes": 696,
+      "sha256": "d7e99ad7fea9661cfc1037f4aa3c9697edb87623562bedfc3aa50b7fd4df9ac9"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790104985785258000-75642/pkg/snippets/fusor-e2c0b909ca38556f/inline0.js",
+      "bytes": 222,
+      "sha256": "7d4311fc461602293aacd393194652bb84024c49443d049959aa62eb700d7366"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790104985785258000-75642/pkg/snippets/fusor-e2c0b909ca38556f/inline1.js",
+      "bytes": 2333,
+      "sha256": "ce7e9129649e73b61648e4211caa35fb53b94991bf884d4c3cc6b6f72f28b446"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790104985785258000-75642/pkg/snippets/fusor-e2c0b909ca38556f/src/dom/mount/flat.js",
+      "bytes": 9652,
+      "sha256": "d9f71cdf81d902a1477aefc5a65895fe6bc9a206d44e30a7fafb39aed3c0e93c"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/index.html",
+      "bytes": 1114,
+      "sha256": "f9c280b92a1475f75ee18e9c558ff2f339cf19412a438ae90b3eb6601ec434df"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/.fusor-output.json",
+      "bytes": 127,
+      "sha256": "0c30d8ee73595439a1e53d9856eba0008adb38c5a82aeabedb8c114c4766d056"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790104976046391000-75509/boot.js",
+      "bytes": 232,
+      "sha256": "916076e105bf1033a23e67aa6279d4769e06dd44a4ecde3de63bd136b2f3b654"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790104976046391000-75509/pkg/app.d.ts",
+      "bytes": 2765,
+      "sha256": "a4e3f87754cfda8d0d861d54eda8cc771675676e0d1e3badc89c67143901745d"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790104976046391000-75509/pkg/app.js",
+      "bytes": 30694,
+      "sha256": "2ea0d2f1cc8503142ea24eca1e3065672611b33c655e62de3159a7742274cefa"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790104976046391000-75509/pkg/app_bg.wasm",
+      "bytes": 260100,
+      "sha256": "ff8caeba1feec2330c5af1dd5209ff758719c2b2e78c7dc95abfc19421552dd7"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790104976046391000-75509/pkg/app_bg.wasm.d.ts",
+      "bytes": 1286,
+      "sha256": "4e1ec3991138907d2fe12d70bd5861cb477a56da63ca18ffa76cadfbfa06bfcc"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790104976046391000-75509/pkg/snippets/fusor-e2c0b909ca38556f/inline0.js",
+      "bytes": 222,
+      "sha256": "7d4311fc461602293aacd393194652bb84024c49443d049959aa62eb700d7366"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790104976046391000-75509/pkg/snippets/fusor-e2c0b909ca38556f/inline1.js",
+      "bytes": 90,
+      "sha256": "0869411572d8b0da9159bc0e6f5d258915d55f65ee8e26bf1ab9a77989b38def"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790104976046391000-75509/pkg/snippets/fusor-e2c0b909ca38556f/inline2.js",
+      "bytes": 2333,
+      "sha256": "ce7e9129649e73b61648e4211caa35fb53b94991bf884d4c3cc6b6f72f28b446"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790104976046391000-75509/pkg/snippets/fusor-e2c0b909ca38556f/src/dom/mount/flat.js",
+      "bytes": 9652,
+      "sha256": "d9f71cdf81d902a1477aefc5a65895fe6bc9a206d44e30a7fafb39aed3c0e93c"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/harness.js",
+      "bytes": 948,
+      "sha256": "ad5eaba0dca741334e5302f9dbcdadfed70aaac0552d59900682990a25ab3e83"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/index.html",
+      "bytes": 894,
+      "sha256": "0e9b374c65a55df73a2e9f751f749a533aa3840c654705a6212cd15e94fe8d01"
+    },
+    {
+      "path": "target/release/ssr",
+      "bytes": 453344,
+      "sha256": "374316f53a29d28f5041d1b00a98898a178680a78960d7304ff2c927f5227391"
+    }
+  ]
+}

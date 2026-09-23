@@ -1,0 +1,7 @@
+
+<template rust:component="Counter">
+  <section class="counter">
+    <button on:click="{ state.count.update(|n| *n += 1); state.clicks.update(|n| *n += 1); }">Increment</button>
+    <p>Shared: {{ state.count.get() }} · Clicks here: {{ state.clicks.get() }}</p>
+  </section>
+</template>

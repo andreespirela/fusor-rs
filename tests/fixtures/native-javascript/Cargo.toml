@@ -1,0 +1,18 @@
+[package]
+name = "fusor-native-javascript-tests"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+[workspace]
+[lib]
+crate-type = ["cdylib", "rlib"]
+[dependencies]
+fusor-core = { path = "../../../crates/fusor-core", features = ["javascript"] }
+fusor-components = { path = "../../../crates/fusor-components", features = ["browser"] }
+wasm-bindgen = "=0.2.117"
+web-sys = { version = "=0.3.94", features = ["Event"] }
+[build-dependencies]
+fusor-build = { path = "../../../crates/fusor-build" }
+[package.metadata.fusor]
+entry = "web/index.html"
+base-path = "/review/"

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>fusor integrations</title><link rel="stylesheet" href="/lab/app.css"></head>
+<body>
+<script type="text/rust">
+use fusor::prelude::*;
+use fusor_query::{QueryClient, QueryOptions, Freshness};
+use crate::ui::panel::Panel;
+use std::{cell::RefCell, num::NonZeroUsize, time::Duration};
+use wasm_bindgen::prelude::*;
+
+pub struct App {
+    queries: QueryClient<u32, String, JsValue>,
+    selected: Signal<u32>, count: Signal<u32>, text: Signal<String>,
+    first: Signal<bool>, second: Signal<bool>, fail: Signal<bool>,
+}
+impl App {
+    fn new(owner: OwnerHandle) -> Self {
+        let queries = fusor_query::browser::client(&owner, QueryOptions {
+            freshness: Freshness::For(Duration::from_secs(60)), retention: Duration::from_secs(120), capacity: NonZeroUsize::new(4).unwrap(),
+        }, |id, request| async move { request.get_text(&format!("/lab/api/items/{id}")).await });
+        Self { queries, selected: signal(1), count: signal(0), text: signal("A shared draft".into()), first: signal(true), second: signal(true), fail: signal(false) }
+    }
+}
+thread_local! { static VIEW: RefCell<Option<Scope>> = const { RefCell::new(None) }; }
+#[wasm_bindgen(start)]
+pub fn start() -> Result<(), JsValue> {
+    VIEW.with(|view| { *view.borrow_mut() = Some(App::mount_with(App::new)?); Ok(()) })
+}
+#[wasm_bindgen]
+pub fn unmount() { VIEW.with(|view| { view.borrow_mut().take(); }); }
+</script>
+<main rust:component="App">
+  <h1>Owned integrations</h1>
+  <p id="intro">Two views share one request and Rust state.</p>
+  <input id="draft" aria-label="Draft" bind:value="state.text">
+  <output id="count">{{ state.count.get() }}</output>
+  <button id="increment" on:click="state.count.update(|n| *n += 1)">Increment</button>
+  <button id="toggle-first" on:click="state.first.update(|show| *show = !*show)">Toggle first view</button>
+  <button id="toggle-second" on:click="state.second.update(|show| *show = !*show)">Toggle second view</button>
+  <button id="next" on:click="state.selected.update(|id| *id += 1)">Next item</button>
+  <button id="refresh" on:click="{ state.queries.invalidate(&state.selected.get()); }">Refresh item</button>
+  <button id="fail" on:click="state.fail.update(|fail| *fail = !*fail)">Toggle setup failure</button>
+  <div class="panels">
+    <div id="first"><Panel client="{{ state.queries.clone() }}" selected="{{ state.selected.clone() }}" text="{{ state.text.clone() }}" count="{{ state.count.clone() }}" fail="{{ state.fail.get() }}" rust:if="state.first.get()" rust:key="state.fail.get()"></Panel></div>
+    <div id="second"><Panel client="{{ state.queries.clone() }}" selected="{{ state.selected.clone() }}" text="{{ state.text.clone() }}" count="{{ state.count.clone() }}" fail="{{ false }}" rust:if="state.second.get()"></Panel></div>
+  </div>
+</main>
+</body>
+</html>

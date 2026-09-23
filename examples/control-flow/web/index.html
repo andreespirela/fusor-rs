@@ -1,0 +1,52 @@
+<!doctype html>
+<html><head><meta charset="UTF-8"><title>fusor control flow</title></head><body>
+<App state="{{ App::new(owner) }}">
+<main>
+  <h1>Conditional HTML and pattern matching</h1>
+  <button id="toggle" on:click="state.visible.update(|v| *v = !*v)">Toggle</button>
+  <button id="login" on:click="state.login(&quot;Ada&quot;)">Sign in</button>
+  <button id="rename" on:click="state.login(&quot;Grace&quot;)">Rename</button>
+  <button id="guest" on:click="{ state.session.set(Session::Guest); state.clicked.set(String::new()); }">Sign out</button>
+  <button id="checking" on:click="state.session.set(Session::Checking)">Check</button>
+  <output id="boundary-status">{{ format!("{:?}", state.boundary.status()) }}</output>
+  <output id="clicked">{{ state.clicked.get() }}</output>
+  <section id="conditional">
+    <If condition="{{ state.visible.get() }}">
+      <h2 id="visible">Visible</h2><input id="draft" aria-label="Local draft">
+      <Else><p id="hidden">Hidden</p></Else>
+    </If>
+    <If condition="{{ !state.visible.get() }}"><p id="optional">Only when hidden</p></If>
+  </section>
+  <section id="session">
+    <Match value="{{ state.session.get() }}">
+      <Case pattern="Session::Checking"><p id="checking-state">Checking…</p></Case>
+      <Case pattern="Session::Guest"><p id="guest-state">Sign in to continue.</p></Case>
+      <Case pattern="Session::Authenticated { user }">
+        <h2 id="greeting">Welcome, {{ user.get().name.as_str() }}</h2>
+        <Dashboard user="{{ user.clone() }}"></Dashboard>
+        <button id="capture" on:click="state.clicked.set(user.get().name)">Capture user</button>
+        <If condition="{{ state.visible.get() }}"><p id="nested">{{ user.get().name }}</p></If>
+        <ul><ForEach items="{{ state.items.get() }}" key="{{ |item| *item }}"><li>{{ user.get().name }} {{ item.get() }}</li></ForEach></ul>
+      </Case>
+    </Match>
+  </section>
+  <ul id="rows"><ForEach items="{{ state.items.get() }}" key="{{ |item| *item }}"><li><Match value="{{ item.get() }}"><Case pattern="1"><b>First</b></Case><Case pattern="number"><span>{{ number.get() }}</span></Case></Match></li></ForEach></ul>
+  <Match value="{{ Some(7_u32) }}"><Case pattern="Some(number)"><If condition="{{ number.get() > 0 }}"><p id="option-value">{{ number.get() }}</p></If></Case><Case pattern="None"><p>Absent</p></Case></Match>
+  <Wrapper><p id="projected">Projected children</p></Wrapper>
+  <Await value="{{ state.outer_read.clone() }}" let="outer_response"><section id="outer-await">
+    <If condition="{{ state.visible.get() }}">
+      <p id="outer-response">{{ outer_response.as_str() }}</p>
+      <input id="outer-draft" aria-label="Retained async draft">
+      <button id="outer-capture" on:click="state.clicked.set(outer_response.to_string())">Capture response</button>
+      <Match value="{{ state.visible.get() }}"><Case pattern="true"><p id="nested-response">{{ outer_response.as_str() }}</p></Case><Case pattern="false"></Case></Match>
+    </If>
+  </section></Await>
+  <Async boundary="{{ state.boundary.clone() }}"><section id="coherent">
+    <Match value="{{ state.session.get() }}">
+      <Case pattern="Session::Checking | Session::Guest"><p>Waiting</p></Case>
+      <Case pattern="Session::Authenticated { user }"><Await value="{{ state.read.clone() }}" let="response"><div><p class="response">{{ response.as_str() }}</p><Dashboard user="{{ user.clone() }}"></Dashboard></div></Await></Case>
+    </Match>
+  </section></Async>
+</main>
+</App>
+</body></html>

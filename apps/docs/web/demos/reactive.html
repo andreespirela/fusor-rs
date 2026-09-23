@@ -1,0 +1,53 @@
+<script
+  type="text/rust"
+  src="../../src/demos/reactive.rs"
+  rust:module="crate::demos::reactive"
+></script>
+<template rust:component="Reactive">
+  <section class="demo-workspace" aria-label="Workspace calculator">
+    <label class="demo-field"
+      >Workspace name<input bind:value="state.name" maxlength="50"
+    /></label>
+    <div class="demo-summary">
+      <span class="demo-symbol" aria-hidden="true">W</span>
+      <div>
+        <h3>{{ state.name.get() }}</h3>
+        <p>A little room for your next idea.</p>
+      </div>
+    </div>
+    <div class="demo-line">
+      <span>Team seats</span>
+      <div class="stepper">
+        <button
+          aria-label="Remove a seat"
+          disabled="{{ state.seats.get() &lt;= 1 }}"
+          on:click="state.seats.update(|n| *n = n.saturating_sub(1).max(1))"
+        >
+          −</button
+        ><output class="seat-count">{{ state.seats.get() }}</output
+        ><button
+          aria-label="Add a seat"
+          disabled="{{ state.seats.get() >= 50 }}"
+          on:click="state.seats.update(|n| *n = (*n + 1).min(50))"
+        >
+          +
+        </button>
+      </div>
+    </div>
+    <div class="demo-line">
+      <span>Annual billing <small>$20 instead of $24 / seat</small></span
+      ><button
+        aria-pressed="{{ state.annual.get() }}"
+        on:click="state.annual.update(|value| *value = !*value)"
+      >
+        {{ if state.annual.get() { "On" } else { "Off" } }}
+      </button>
+    </div>
+    <div class="demo-total">
+      <span>Monthly equivalent</span
+      ><output aria-live="polite"
+        >${{ state.total.get() }}<small>/ month</small></output
+      >
+    </div>
+  </section>
+</template>

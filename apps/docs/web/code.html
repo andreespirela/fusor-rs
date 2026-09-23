@@ -1,0 +1,23 @@
+<script
+  type="text/rust"
+  src="../src/code.rs"
+  rust:module="crate::code"
+></script>
+<template rust:component="CodeBlock">
+  <div class="code-block">
+    <div class="code-label">
+      <span>{{ state.data.label }}</span><span aria-hidden="true">• • •</span>
+    </div>
+    <pre
+      tabindex="0"
+      aria-label="{{ state.data.label }}"
+    ><code><ForEach items="{{ state.data.tokens.to_vec() }}" key="{{ |item| item.id }}">
+<Token item="{{ item.clone() }}"></Token>
+</ForEach></code></pre>
+  </div>
+</template>
+<template rust:component="Token"
+  ><span class="syntax-token" style="{{ state.item.get().style }}"
+    >{{ state.item.get().text }}</span
+  ></template
+>
