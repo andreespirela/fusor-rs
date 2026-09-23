@@ -58,11 +58,12 @@ rebuild and deployment.
   `web/components`: four independently owned live components. Choosing a different
   example disposes the previous one and starts the next with fresh state. Changing
   the displayed source file leaves the running example intact.
-- `host/web/index.html` and `host/src/app.rs`: a short page that mounts all four
-  components inside `<App>`, shown under the "Page" file group in the example
+- `host/{counter,search,keyed_list,async_data}/web/index.html` and matching
+  `src/app.rs`: for each example, a short page that mounts and imports only that
+  component inside `<App>`, shown under the "Page" file group in the example
   editor. These files are displayed and downloadable but not compiled into this
-  app, which has its own entry page. Template discovery only scans `web/components`, so the host page is
-  never picked up by this build.
+  app, which has its own entry page. Template discovery only scans `web/components`,
+  so the host pages are never picked up by this build.
 - `build/highlight.rs`, `src/code.rs`, and `web/components/code.html`: build-time
   Syntect highlighting rendered as escaped text tokens. No runtime highlighter or
   raw HTML injection. Colors have at least 4.5:1 contrast against the code background.
@@ -76,10 +77,12 @@ the HTML calls `increment` and `reset` methods on a Rust struct, and one binding
 displays the count. A key below the source explains the four pieces of template
 syntax visitors will see. The example files are complete reusable components, not
 whole apps, so the editor's tab bar has two labeled groups: "Component" (the
-selected example's HTML and Rust) and "Page" (the host `index.html` and `app.rs`).
-One sentence above the key names the selected component's tag and says the page
-places it inside `<App>`, which starts the app; a one-line note below says what
-`fusor new` adds. Choosing another example returns to its component HTML. At phone
+selected example's HTML and Rust) and "Page" (that example's host `index.html` and
+`app.rs`). One sentence above the key names the selected component's tag and says
+the page places it inside `<App>`, which starts the app; a one-line note below says
+what `fusor new` adds. Choosing another example while a page file is open keeps that
+page file open, so it switches to the new example's page. From a component file, it
+opens the new component's HTML. At phone
 widths each group's label sits above its two files. Live search filters real guide links using a bound input.
 Keyed lists demonstrate that notes survive reordering of the actual DOM nodes.
 Async data reads a title and status independently after 250 ms and 1,000 ms delays;
@@ -112,9 +115,10 @@ literally. They exercise search
 and empty states, keyed input/DOM retention, async coherent publication,
 supersession, failed refresh retention and recovery, switching away during a request, counter updates,
 keyboard interaction, and all examples at six widths from 320 to 1440 pixels.
-They compare all eight component files and both host page files, and their
+They compare all eight component files and all eight host page files, and their
 downloadable copies, with the sources on disk. They check that only one file tab
-is active, that viewing the page files keeps the running example's state,
-syntax-color contrast, that the host page mounts the tag named for each example,
-and that documentation links resolve. Chromium also checks the clipboard. Screenshots are saved by browser in
+is active, that each host page mounts and imports only its own component, that an
+open page file follows a newly selected example, that viewing the page files keeps
+the running example's state, syntax-color contrast, and that documentation links
+resolve. Chromium also checks the clipboard. Screenshots are saved by browser in
 the ignored `test-results` directory. Docs and benchmark builds are not required.

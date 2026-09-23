@@ -22,6 +22,19 @@ impl Example {
         }
     }
 
+    pub fn page_source(self, rust: bool) -> &'static CodeFile {
+        match (self, rust) {
+            (Self::Counter, false) => &code::COUNTER_PAGE_HTML,
+            (Self::Counter, true) => &code::COUNTER_PAGE_RS,
+            (Self::Search, false) => &code::SEARCH_PAGE_HTML,
+            (Self::Search, true) => &code::SEARCH_PAGE_RS,
+            (Self::KeyedList, false) => &code::KEYED_LIST_PAGE_HTML,
+            (Self::KeyedList, true) => &code::KEYED_LIST_PAGE_RS,
+            (Self::AsyncData, false) => &code::ASYNC_DATA_PAGE_HTML,
+            (Self::AsyncData, true) => &code::ASYNC_DATA_PAGE_RS,
+        }
+    }
+
     pub fn description(self) -> &'static str {
         match self {
             Self::Counter => {

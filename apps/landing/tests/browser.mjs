@@ -158,22 +158,29 @@ try {
     }
   }
 
-  // The same editor shows the page that hosts the components, from real source.
+  // The same editor shows the page that hosts the selected example, from real
+  // source. It mounts and imports only that example's component.
   const componentFiles = page.getByRole("group", { name: "Component files" });
   const pageFiles = page.getByRole("group", { name: "Page files" });
-  await expect(
-    componentFiles.getByRole("button", { name: "async_data.rs", exact: true }),
-  ).toBeVisible();
-  for (const [name, path] of [
-    ["index.html", "host/web/index.html"],
-    ["app.rs", "host/src/app.rs"],
-  ]) {
-    const button = pageFiles.getByRole("button", { name, exact: true });
-    await button.click();
-    await expect(button).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator('.source-tabs button[aria-pressed="true"]')).toHaveCount(1);
+  const tags = {
+    counter: "Counter",
+    search: "LiveSearch",
+    keyed_list: "KeyedList",
+    async_data: "AsyncData",
+  };
+  const checkPage = async (stem, name) => {
+    const path =
+      name === "index.html"
+        ? `host/${stem}/web/index.html`
+        : `host/${stem}/src/app.rs`;
+    await expect(
+      pageFiles.getByRole("button", { name, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.locator('.source-tabs button[aria-pressed="true"]'),
+    ).toHaveCount(1);
     const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
-    assert.equal(await code.textContent(), source, `${name}: complete page source`);
+    assert.equal(await code.textContent(), source, `${path}: complete page source`);
     await expect(
       page.getByRole("link", { name: "Open the displayed source file" }),
     ).toHaveAttribute("href", `./source/${path}.txt`);
@@ -182,29 +189,39 @@ try {
     assert.match(response.headers()["content-type"], /^text\/plain/);
     assert.equal(await response.text(), source);
     const contrast = await code.evaluate(syntaxContrast);
-    assert.ok(contrast.colors >= 3, `${name}: multiple syntax colors`);
-    assert.ok(contrast.minimum >= 4.5, `${name}: readable syntax contrast`);
+    assert.ok(contrast.colors >= 3, `${path}: multiple syntax colors`);
+    assert.ok(contrast.minimum >= 4.5, `${path}: readable syntax contrast`);
+    const tag = tags[stem];
+    assert.ok(
+      name === "index.html"
+        ? source.includes(`<${tag}></${tag}>`)
+        : source.includes(`use crate::${stem}::${tag};`),
+      `${path}: uses ${tag}`,
+    );
+    for (const other of Object.values(tags).filter((other) => other !== tag)) {
+      assert.ok(!source.includes(other), `${path}: does not reference ${other}`);
+    }
+  };
+  await select("Counter");
+  let open = "index.html";
+  await pageFiles.getByRole("button", { name: open, exact: true }).click();
+  for (const [label, stem] of examples) {
+    // Changing examples keeps the open page file, now showing this example's page.
+    await select(label);
+    await expect(page.locator(".page-tag")).toHaveText(`<${tags[stem]}>`);
+    await checkPage(stem, open);
+    open = open === "index.html" ? "app.rs" : "index.html";
+    await pageFiles.getByRole("button", { name: open, exact: true }).click();
+    await checkPage(stem, open);
   }
-  // Choosing another example returns to that component's HTML.
+  // From a component file, choosing another example opens that component's HTML.
+  await componentFiles
+    .getByRole("button", { name: "async_data.rs", exact: true })
+    .click();
   await select("Counter");
   await expect(
     componentFiles.getByRole("button", { name: "counter.html", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  // The tag named in the source note is the one the page really mounts.
-  const host = await readFile(
-    new URL("../host/web/index.html", import.meta.url),
-    "utf8",
-  );
-  for (const [label, tag] of [
-    ["Counter", "Counter"],
-    ["Live search", "LiveSearch"],
-    ["Keyed lists", "KeyedList"],
-    ["Async data", "AsyncData"],
-  ]) {
-    await select(label);
-    await expect(page.locator(".page-tag")).toHaveText(`<${tag}>`);
-    assert.ok(host.includes(`<${tag}></${tag}>`), `Host page mounts <${tag}>`);
-  }
 
   await select("Live search");
   const query = page.getByLabel("Find a guide");
@@ -214,9 +231,14 @@ try {
   await page.getByRole("button", { name: "search.rs", exact: true }).click();
   await expect(query).toHaveValue("  TYPED  ");
   // Viewing the host page's source leaves the running component intact.
-  await pageFiles.getByRole("button", { name: "index.html", exact: true }).click();
-  await expect(query).toHaveValue("  TYPED  ");
-  await expect(page.locator(".search-results li")).toHaveCount(2);
+  for (const name of ["index.html", "app.rs"]) {
+    await pageFiles.getByRole("button", { name, exact: true }).click();
+    await expect(query).toHaveValue("  TYPED  ");
+    await expect(page.locator(".search-results li")).toHaveCount(2);
+  }
+  await componentFiles
+    .getByRole("button", { name: "search.html", exact: true })
+    .click();
   await page.screenshot({ path: `${artifacts}search-rust.png` });
   await query.fill("<script>alert(1)</script>");
   await expect(page.locator(".search-results li")).toHaveCount(0);
@@ -480,7 +502,7 @@ try {
   ).toBeVisible();
   assert.deepEqual(errors, [], "No uncaught browser errors");
   console.log(
-    `${engine.name()}: all four examples, eight component and two page source files, syntax contrast, keyed DOM identity, automatic async coherence/supersession/recovery/disposal, keyboard interaction, and responsive layouts passed.`,
+    `${engine.name()}: all four examples, eight component and eight page source files, syntax contrast, keyed DOM identity, automatic async coherence/supersession/recovery/disposal, keyboard interaction, and responsive layouts passed.`,
   );
 } finally {
   await browser.close();

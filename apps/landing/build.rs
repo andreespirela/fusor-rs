@@ -29,20 +29,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let constant = format!("{}_{}", example.to_uppercase(), language.to_uppercase());
             files.push((constant, format!("{example}.{language}"), language, source));
         }
+        // The page that hosts this example is displayed, not compiled into this app.
+        for (language, name, source) in [
+            ("rs", "app.rs", format!("host/{example}/src/app.rs")),
+            (
+                "html",
+                "index.html",
+                format!("host/{example}/web/index.html"),
+            ),
+        ] {
+            let constant = format!(
+                "{}_PAGE_{}",
+                example.to_uppercase(),
+                language.to_uppercase()
+            );
+            files.push((constant, name.to_owned(), language, source));
+        }
     }
-    // The page that hosts the examples is displayed, not compiled into this app.
-    files.push((
-        "HOST_HTML".into(),
-        "index.html".into(),
-        "html",
-        "host/web/index.html".into(),
-    ));
-    files.push((
-        "HOST_RS".into(),
-        "app.rs".into(),
-        "rs",
-        "host/src/app.rs".into(),
-    ));
     for (constant, name, language, source) in files {
         println!("cargo:rerun-if-changed={source}");
         let code = fs::read_to_string(&source)?;

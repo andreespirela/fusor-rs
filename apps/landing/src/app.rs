@@ -1,6 +1,6 @@
 use crate::{
     async_data::AsyncData,
-    code::{self, CodeBlock, CodeFile},
+    code::{CodeBlock, CodeFile},
     counter::Counter,
     examples::Example,
     keyed_list::KeyedList,
@@ -36,17 +36,23 @@ impl App {
         }
     }
 
+    // A page file stays open so it follows the new example; otherwise start at its HTML.
     fn select(&self, example: Example) {
-        self.example.set(example);
-        self.show_file(false, false);
+        fusor::batch(|| {
+            self.example.set(example);
+            if !self.show_page.get() {
+                self.show_rust.set(false);
+            }
+        });
     }
 
     // The editor shows the selected component's files or the page that hosts it.
     fn file(&self, page: bool, rust: bool) -> &'static CodeFile {
-        match (page, rust) {
-            (false, _) => self.example.get().source(rust),
-            (true, false) => &code::HOST_HTML,
-            (true, true) => &code::HOST_RS,
+        let example = self.example.get();
+        if page {
+            example.page_source(rust)
+        } else {
+            example.source(rust)
         }
     }
 
