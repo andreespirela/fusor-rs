@@ -8,9 +8,9 @@ Write your UI in HTML files. Keep state and frontend logic in Rust. No markup in
 
 fusor compiles your Rust to WebAssembly for the browser. When a signal changes, the bindings that read it run again.
 
-**In development · v0.1** — This is experimental software. APIs will change; don't rely on it for production yet.
+**In development · v0.1** — This is experimental software. APIs will change; don't rely on it for production yet. See [status and known limitations](#status-and-known-limitations).
 
-[Get started](#get-started) · [How it works](#how-it-works) · [Examples](#examples) · [Contributing](CONTRIBUTING.md)
+[Get started](#get-started) · [How it works](#how-it-works) · [Examples](#examples) · [Status](#status-and-known-limitations) · [Contributing](CONTRIBUTING.md)
 
 ## A component in two files
 
@@ -111,6 +111,28 @@ The default application is a client side WebAssembly app. Optional packages add 
 
 The [documentation showcase](apps/docs/) has more runnable examples. Performance measurements and their methodology live in [benchmarks](benchmarks/README.md).
 
+## Status and known limitations
+
+fusor is v0.1 and experimental. It targets the browser only: there is no desktop or mobile renderer.
+
+**Breaking changes.** Until 1.0, each minor release (0.2, 0.3, …) may change the HTML syntax and the Rust APIs. Patch releases (0.1.x) fix bugs without breaking changes. Every breaking release will come with migration notes.
+
+**Bundle size.** A hello-world app ships about 54 KiB gzipped, counting its HTML, JavaScript and Wasm. In the same [benchmark run](benchmarks/README.md), the Leptos equivalent is 25.5 KiB and Solid's is 4 KiB. Size grows with the app, and reducing it is ongoing work.
+
+**Editor support.** rust-analyzer works in your `.rs` modules, with completion, hover and go to definition on the fields and methods templates use. Compiler errors in template expressions point at the line in the `.html` file. There is no completion or hover inside `.html` files yet.
+
+**Not supported yet:**
+
+- SVG, MathML, `<select>` and table parsing contexts inside `<ForEach>`, `<If>` and `<Match>`. Tables work with an explicit `<tbody>` around `<ForEach>`.
+- Match guards and `ref`/`mut` captures in `<Case>` patterns.
+- `bind:field` on anything but text-like inputs: no checkbox, number, file, date or `<select>`.
+- Nested `<Async>` boundaries, editable controls and router outlets inside coherent async views.
+- Nested islands and streamed server rendering. Server rendering is synchronous, and your application resolves its data first.
+- A built-in backend or server functions. fusor renders HTML; you bring your own HTTP server and data layer.
+- npm workspaces and linked packages. Apps that use component JavaScript rebuild and reload on every source edit instead of refreshing in place.
+
+The [guides](apps/docs/) list the limits of each feature in more detail.
+
 ## How is this different from Dioxus?
 
 [Dioxus](https://github.com/DioxusLabs/dioxus) components are Rust functions that return `rsx!` markup, and Dioxus reconciles their output through a [`VirtualDom`](https://docs.rs/dioxus-core/latest/dioxus_core/struct.VirtualDom.html). fusor writes markup in separate `.html` templates connected to Rust modules with `template!`. It has no virtual DOM: bindings track the signals they read and update their associated DOM targets.
@@ -119,9 +141,15 @@ The [documentation showcase](apps/docs/) has more runnable examples. Performance
 
 [Leptos](https://github.com/leptos-rs/leptos) and fusor share a reactive model: fine-grained signal tracking and no virtual DOM. The difference is authoring. Leptos views are written in Rust, with the [`view!`](https://docs.rs/leptos/latest/leptos/macro.view.html) macro or builder functions. fusor uses separate HTML templates, with Rust expressions in bindings and attributes, connected to Rust modules with `template!`.
 
+## How is this different from Sycamore?
+
+[Sycamore](https://github.com/sycamore-rs/sycamore) is the closest in design: fine-grained reactivity, no virtual DOM, and Rust compiled to WebAssembly. It is also older and more established. The difference is again authoring. Sycamore components are Rust functions that return markup written with the [`view!`](https://docs.rs/sycamore/latest/sycamore/macro.view.html) macro. In fusor the markup is an `.html` file, and a Rust type provides its state and methods.
+
 ## Contributing
 
 fusor is an open source project in early development. The [contributing guide](CONTRIBUTING.md) covers the repository setup, checks, and development workflow. The framework and tooling live in `crates/`; runnable applications live in `apps/` and `examples/`.
+
+fusor is built with the help of AI tools, mainly Claude Code, under the same rules the project asks of contributors: see [Using AI tools](CONTRIBUTING.md#using-ai-tools).
 
 ## License
 

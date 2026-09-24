@@ -241,6 +241,9 @@ submit. Read and understand every line, make sure the tests you add would fail
 without your change, and be ready to explain your reasoning in review. Please
 don't open pull requests or issues generated without that review.
 
+fusor's own development uses AI tools heavily too, mainly Claude Code, and the
+maintainer works under the same rules.
+
 ## License
 
 By contributing, you agree that your contributions are licensed under the
