@@ -10,4 +10,4 @@ cargo install cargo-fusor
 Most people want the standalone `fusor` command instead, from
 [`fusor-cli`](https://crates.io/crates/fusor-cli).
 
-Part of [fusor](https://github.com/andreespirela/fusor-rs). Licensed under the [MIT License](LICENSE).
+Part of [fusor](https://github.com/fusor-rs/fusor). Licensed under the [MIT License](LICENSE).

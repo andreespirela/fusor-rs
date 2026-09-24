@@ -1613,7 +1613,7 @@
       {
         "id": "run",
         "title": "Open the working companion",
-        "body": "The remaining examples use the checked-in companion, which deliberately keeps the supported external-script/explicit-registration API.\n\nTo run the companion, clone https://github.com/andreespirela/fusor-rs and run this command from the repository root. Open http://127.0.0.1:8091/. Paths below are relative to `apps/docs/tutorial/`.",
+        "body": "The remaining examples use the checked-in companion, which deliberately keeps the supported external-script/explicit-registration API.\n\nTo run the companion, clone https://github.com/fusor-rs/fusor and run this command from the repository root. Open http://127.0.0.1:8091/. Paths below are relative to `apps/docs/tutorial/`.",
         "code": "# From the fusor repository root, after Installation:\nfusor dev --manifest-path apps/docs/tutorial/Cargo.toml --port 8091",
         "language": "Terminal",
         "note": "",

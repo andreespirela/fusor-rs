@@ -1,13 +1,13 @@
 #!/bin/sh
 # Installs the fusor CLI on macOS and Linux:
 #
-#   curl -fsSL https://raw.githubusercontent.com/andreespirela/fusor-rs/main/install.sh | sh
+#   curl -fsSL https://fusor.build/install.sh | sh
 #
 # Install a specific release with `sh -s v0.1.0`, or FUSOR_VERSION=v0.1.0.
 # FUSOR_INSTALL chooses the directory (default ~/.fusor); binaries go in its bin/.
 set -eu
 
-repository="andreespirela/fusor-rs"
+repository="fusor-rs/fusor"
 # Overridable so the release workflow can test this script against the archives
 # it has just built, before they are published.
 download_base="${FUSOR_DOWNLOAD_BASE:-https://github.com/$repository/releases/download}"

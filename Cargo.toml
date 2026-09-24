@@ -17,7 +17,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
-repository = "https://github.com/andreespirela/fusor-rs"
+repository = "https://github.com/fusor-rs/fusor"
 
 [workspace.dependencies]
 fusor-npm = { path = "crates/fusor-npm", version = "=0.1.0" }

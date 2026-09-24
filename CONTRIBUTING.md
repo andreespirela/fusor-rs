@@ -7,7 +7,7 @@ about getting behavior right than about keeping every existing API.
 
 ## Reporting a bug
 
-Search the [open issues](https://github.com/andreespirela/fusor-rs/issues)
+Search the [open issues](https://github.com/fusor-rs/fusor/issues)
 first. If nobody has reported it, open a new issue with:
 
 - the output of `fusor --version`, your OS, and the browser if it matters;
@@ -19,7 +19,7 @@ first. If nobody has reported it, open a new issue with:
 Please report one bug per issue.
 
 Security problems should not go in a public issue. Report them privately
-through [GitHub security advisories](https://github.com/andreespirela/fusor-rs/security/advisories/new).
+through [GitHub security advisories](https://github.com/fusor-rs/fusor/security/advisories/new).
 
 ## Proposing a change
 
@@ -41,8 +41,8 @@ You need:
 - Node 22 or newer, for the browser and tooling suites.
 
 ```sh
-git clone https://github.com/andreespirela/fusor-rs.git
-cd fusor-rs
+git clone https://github.com/fusor-rs/fusor.git
+cd fusor
 just setup
 just dev
 ```

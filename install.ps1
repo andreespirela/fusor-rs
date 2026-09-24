@@ -1,6 +1,6 @@
 # Installs the fusor CLI on Windows:
 #
-#   irm https://raw.githubusercontent.com/andreespirela/fusor-rs/main/install.ps1 | iex
+#   irm https://fusor.build/install.ps1 | iex
 #
 # Set $env:FUSOR_VERSION = "v0.1.0" to install a specific release, and
 # $env:FUSOR_INSTALL to choose the directory (default ~\.fusor). Binaries go in
@@ -8,7 +8,7 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$repository = 'andreespirela/fusor-rs'
+$repository = 'fusor-rs/fusor'
 # Overridable so the release workflow can test this script against the archives
 # it has just built, before they are published.
 $downloadBase = if ($env:FUSOR_DOWNLOAD_BASE) { $env:FUSOR_DOWNLOAD_BASE } else { "https://github.com/$repository/releases/download" }

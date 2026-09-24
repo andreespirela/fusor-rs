@@ -10,4 +10,4 @@ and `routing` features re-export `fusor-async`, `fusor-query` and
 
 Add it to an application with `fusor add forms` or `fusor add actions`.
 
-Part of [fusor](https://github.com/andreespirela/fusor-rs), which builds reactive web applications from HTML and ordinary Rust. Licensed under the [MIT License](LICENSE).
+Part of [fusor](https://github.com/fusor-rs/fusor), which builds reactive web applications from HTML and ordinary Rust. Licensed under the [MIT License](LICENSE).
