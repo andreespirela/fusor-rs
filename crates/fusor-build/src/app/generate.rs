@@ -1,12 +1,16 @@
 use super::{
-    ARTIFACT_VERSION, AppConfig, ArtifactManifest, RegistrationArtifact, Result, SourceArtifact,
-    SourceKind,
-    error::SourceError,
+    ARTIFACT_VERSION, AppConfig, ArtifactManifest, HTML_FILE, MANIFEST_FILE, MODULE_FILE,
+    RegistrationArtifact, Result, Source, SourceArtifact, SourceError, SourceKind,
     external::{LinkedSource, Linker},
     includes::{BINDINGS_PREFIX, TEMPLATE_DIRECTORY},
     validate,
 };
-use crate::{Page, RustBlock, SourceMap, extract::extract_from, html};
+use crate::{
+    Page, RustBlock, SourceMap,
+    extract::extract_from,
+    html,
+    javascript::{self, PlannedModule},
+};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::{
@@ -24,78 +28,77 @@ pub fn generate(manifest: &Path, out: &Path) -> Result<ArtifactManifest> {
     let package_root = root.canonicalize()?;
     fs::create_dir_all(out)?;
     let out = out.canonicalize()?;
-    let mut generator = Generator {
-        config: &config,
-        root,
-        linker: Linker::new(&package_root, &config.output, &out),
-        package_root,
-        out,
-        next_component: 0,
-    };
-    let templates = generator.out.join(TEMPLATE_DIRECTORY);
+    let templates = out.join(TEMPLATE_DIRECTORY);
     if templates.exists() {
         fs::remove_dir_all(&templates)?;
     }
+    let mut generator = Generator {
+        config: &config,
+        package_root: &package_root,
+        out: &out,
+        next_component: 0,
+        linker: Linker::new(&package_root, &config.output, &out),
+    };
     // Compiling a source writes nothing, so a rejected source leaves no new output.
     let sources = config
         .discover_sources(root)?
         .into_iter()
-        .map(|(name, path)| generator.compile(name, &path))
+        .map(|source| generator.compile(source))
         .collect::<Result<Vec<_>>>()?;
     generator.write(sources)
 }
 
 struct Generator<'a> {
     config: &'a AppConfig,
-    root: &'a Path,
-    package_root: PathBuf,
-    out: PathBuf,
+    package_root: &'a Path,
+    out: &'a Path,
     next_component: usize,
-    linker: Linker,
+    linker: Linker<'a>,
 }
 
 struct CompiledSource {
-    name: String,
-    kind: SourceKind,
-    html_path: PathBuf,
+    source: Source,
     page: Page,
     map: String,
     rust_path: PathBuf,
     /// Inline Rust becomes a module of `crate::ui`.
     ui_module: Option<TokenStream>,
     external: Option<LinkedSource>,
+    javascript: Vec<PlannedModule>,
+}
+
+struct Entry {
+    html: String,
+    loader_offset: usize,
+    managed: bool,
 }
 
 impl Generator<'_> {
-    fn compile(&mut self, name: String, path: &Path) -> Result<CompiledSource> {
-        let kind = SourceKind::of(&name);
-        let authored = self.root.join(path);
-        let html_path = authored
-            .canonicalize()
-            .map_err(|error| SourceError::new(&authored, error))?;
-        let source = fs::read_to_string(&html_path)?;
-        if kind != SourceKind::Entry {
-            validate::component_file(&source)
-                .map_err(|error| SourceError::extracted(&html_path, error))?;
+    fn compile(&mut self, source: Source) -> Result<CompiledSource> {
+        let html_path = &source.canonical;
+        let text = fs::read_to_string(html_path)?;
+        if source.kind != SourceKind::Entry {
+            validate::component_file(&text)
+                .map_err(|error| SourceError::extracted(html_path, error))?;
         }
-        let mut page = extract_from(&source, self.next_component)
-            .map_err(|error| SourceError::extracted(&html_path, error))?;
+        let mut page = extract_from(&text, self.next_component)
+            .map_err(|error| SourceError::extracted(html_path, error))?;
         let native = page.blocks.is_empty();
         if native && page.component_count == 0 {
             return Err(SourceError::new(
-                &html_path,
+                html_path,
                 "native template files require an App boundary or rust:component declarations",
             )
             .into());
         }
-        if !native && kind == SourceKind::Discovered {
-            return Err(SourceError::new(&html_path, "discovered HTML uses fusor::template! in an ordinary Rust module; register script-based HTML explicitly in Cargo metadata").into());
+        if !native && source.kind == SourceKind::Discovered {
+            return Err(SourceError::new(html_path, "discovered HTML uses fusor::template! in an ordinary Rust module; register script-based HTML explicitly in Cargo metadata").into());
         }
-        if kind != SourceKind::Entry {
+        if source.kind != SourceKind::Entry {
             if let Some(offset) = page.app_offset {
                 return Err(SourceError::at_offset(
-                    &html_path,
-                    &source,
+                    html_path,
+                    &text,
                     offset,
                     "App is only allowed in the entry document",
                 )
@@ -104,27 +107,29 @@ impl Generator<'_> {
         }
         self.next_component += page.component_count;
         let rust_path = if native {
-            let path = path.to_str().ok_or("template path must be UTF-8")?;
+            let path = source.path.to_str().ok_or("template path must be UTF-8")?;
             self.out.join(TEMPLATE_DIRECTORY).join(format!("{path}.rs"))
         } else {
-            self.out.join(format!("{BINDINGS_PREFIX}{name}.rs"))
+            self.out
+                .join(format!("{BINDINGS_PREFIX}{}.rs", source.name))
         };
         let mut ui_module = None;
         let mut external = None;
+        // Extraction rejects an external script next to any other Rust block.
         if let Some(RustBlock {
             element,
             external: Some(rust),
             ..
         }) = page.blocks.first()
         {
-            let (linked, marker) =
-                self.linker
-                    .link(&name, &html_path, &source, element.start, rust)?;
+            let linked = self
+                .linker
+                .link(&source.name, html_path, &text, element.start, rust)?;
             page.rust.push('\n');
-            page.rust.push_str(&marker);
+            page.rust.push_str(&linked.marker_code);
             external = Some(linked);
         } else if !native {
-            let module = format_ident!("{name}");
+            let module = format_ident!("{}", source.name);
             let path = rust_path
                 .to_str()
                 .ok_or("generated module path must be UTF-8")?;
@@ -133,7 +138,7 @@ impl Generator<'_> {
         if self.config.delivery.is_some() {
             if let Some(module) = page.javascript.first() {
                 return Err(SourceError::at(
-                    &html_path,
+                    html_path,
                     module.line,
                     module.column,
                     "component JavaScript is unsupported in server/island delivery; use a browser application",
@@ -141,16 +146,23 @@ impl Generator<'_> {
                 .into());
             }
         }
+        let javascript = javascript::plan(
+            self.package_root,
+            self.out,
+            html_path,
+            &page.rust,
+            external.as_ref().map(|linked| linked.path.as_path()),
+            &page.javascript,
+        )?;
         let map = SourceMap::new(page.locations.clone())?.to_string();
         Ok(CompiledSource {
-            name,
-            kind,
-            html_path,
+            source,
             page,
             map,
             rust_path,
             ui_module,
             external,
+            javascript,
         })
     }
 
@@ -161,63 +173,40 @@ impl Generator<'_> {
         let mut javascript = Vec::new();
         let mut entry = None;
         let mut templates = String::new();
-        for source in sources {
-            let page = source.page;
-            fs::create_dir_all(source.rust_path.parent().expect("generated parent"))?;
-            let fingerprint = source.rust_path.with_extension("fingerprint.rs");
-            let map = source.rust_path.with_extension("map");
-            if let Some(linked) = &source.external {
-                fs::write(&linked.registration, &linked.registration_rust)?;
-                registrations.push(linked.registration_mod.clone());
-            }
-            ui_modules.extend(source.ui_module);
-            javascript.extend(crate::javascript::prepare(
-                &self.package_root,
-                &self.out,
-                &source.html_path,
-                &page.rust,
-                source.external.as_ref().map(|linked| linked.path.as_path()),
-                &page.javascript,
-            )?);
-            fs::write(&source.rust_path, &page.rust)?;
-            fs::write(&fingerprint, &page.fingerprint)?;
-            fs::write(&map, &source.map)?;
-            let (external, registration) = match source.external {
-                Some(linked) => (
-                    Some(linked.path),
-                    Some(RegistrationArtifact {
-                        rust: linked.registration,
-                        line: linked.line,
-                        column: linked.column,
-                    }),
-                ),
-                None => (None, None),
-            };
-            artifacts.push(SourceArtifact {
-                name: source.name,
-                source: source.html_path,
-                rust: source.rust_path,
-                fingerprint,
-                map,
-                external,
-                registration,
-            });
-            if source.kind == SourceKind::Entry {
+        for compiled in sources {
+            artifacts.push(write_source(&compiled)?);
+            ui_modules.extend(compiled.ui_module);
+            registrations.extend(compiled.external.map(|linked| linked.registration_item));
+            javascript.extend(
+                compiled
+                    .javascript
+                    .into_iter()
+                    .map(|module| module.artifact),
+            );
+            let page = compiled.page;
+            if compiled.source.kind == SourceKind::Entry {
                 // A native entry has no script to load next to, so load before </body>.
-                let loader = page
+                let loader_offset = page
                     .loader_offset
                     .unwrap_or_else(|| html::body_end(&page.html));
-                entry = Some((page.html, loader, page.app_offset.is_some()));
+                entry = Some(Entry {
+                    managed: page.app_offset.is_some(),
+                    html: page.html,
+                    loader_offset,
+                });
             } else {
                 templates.push_str(&page.html);
                 templates.push('\n');
             }
         }
-        let (mut html, mut loader_offset, managed_entry) =
-            entry.expect("the entry is always the first source");
+        let Entry {
+            mut html,
+            mut loader_offset,
+            managed,
+        } = entry.expect("the entry is always the first source");
         html::insert_before_body_end(&mut html, &templates, Some(&mut loader_offset));
-        let html_path = self.out.join("fusor_app.html");
-        let module_path = self.out.join("fusor_module.rs");
+        let html_path = self.out.join(HTML_FILE);
+        let module_path = self.out.join(MODULE_FILE);
         fs::write(&html_path, html)?;
         fs::write(
             &module_path,
@@ -228,14 +217,42 @@ impl Generator<'_> {
             html: html_path,
             module: module_path,
             loader_offset,
-            managed_entry,
+            managed_entry: managed,
             sources: artifacts,
             javascript,
         };
         fs::write(
-            self.out.join("fusor_artifacts.json"),
+            self.out.join(MANIFEST_FILE),
             serde_json::to_vec_pretty(&artifact)?,
         )?;
         Ok(artifact)
     }
+}
+
+fn write_source(compiled: &CompiledSource) -> Result<SourceArtifact> {
+    let rust_path = &compiled.rust_path;
+    fs::create_dir_all(rust_path.parent().expect("generated parent"))?;
+    let fingerprint = rust_path.with_extension("fingerprint.rs");
+    let map = rust_path.with_extension("map");
+    if let Some(linked) = &compiled.external {
+        fs::write(&linked.registration_path, &linked.registration_code)?;
+    }
+    javascript::write(&compiled.javascript)?;
+    fs::write(rust_path, &compiled.page.rust)?;
+    fs::write(&fingerprint, &compiled.page.fingerprint)?;
+    fs::write(&map, &compiled.map)?;
+    let linked = compiled.external.as_ref();
+    Ok(SourceArtifact {
+        name: compiled.source.name.clone(),
+        source: compiled.source.canonical.clone(),
+        rust: rust_path.clone(),
+        fingerprint,
+        map,
+        external: linked.map(|linked| linked.path.clone()),
+        registration: linked.map(|linked| RegistrationArtifact {
+            rust: linked.registration_path.clone(),
+            line: linked.line,
+            column: linked.column,
+        }),
+    })
 }

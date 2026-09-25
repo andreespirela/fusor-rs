@@ -55,7 +55,7 @@ pub(crate) fn try_refresh(cx: &Context, project: &Project, changed: &[PathBuf]) 
         .config
         .discover_sources(&project.root)?
         .into_iter()
-        .map(|(_, path)| project.root.join(path))
+        .map(|source| project.root.join(source.path))
         .collect();
     let assets = project
         .config

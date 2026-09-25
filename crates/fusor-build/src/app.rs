@@ -11,8 +11,11 @@ mod validate;
 pub use artifact::{
     ARTIFACT_VERSION, ArtifactManifest, JavaScriptArtifact, RegistrationArtifact, SourceArtifact,
 };
-use config::SourceKind;
-pub use config::{AppConfig, DeliveryConfig, DeliveryMode, DeliveryUnit, valid_module_name};
+pub(crate) use artifact::{HTML_FILE, MANIFEST_FILE, MODULE_FILE};
+pub use config::{
+    AppConfig, DeliveryConfig, DeliveryMode, DeliveryUnit, Source, SourceKind, valid_module_name,
+};
+pub(crate) use error::SourceError;
 pub use generate::generate;
 pub use includes::includes_foreign_file;
 

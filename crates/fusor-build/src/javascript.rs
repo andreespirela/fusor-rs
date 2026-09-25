@@ -1,5 +1,8 @@
 //! Node-free module extraction and editor declarations. Bundling is host tooling.
-use crate::{JavaScriptModule, app::JavaScriptArtifact};
+use crate::{
+    JavaScriptModule,
+    app::{JavaScriptArtifact, SourceError},
+};
 use std::{
     error::Error,
     fs,
@@ -142,14 +145,23 @@ fn native_rust(package: &Path, html: &Path) -> Result<Option<PathBuf>> {
     visit(&package.join("src"), &relative)
 }
 
-pub(crate) fn prepare(
+/// A component module, checked while its source compiles and written afterwards.
+pub(crate) struct PlannedModule {
+    pub(crate) artifact: JavaScriptArtifact,
+    /// An inline module's body, written to `artifact.path`.
+    inline: Option<String>,
+    declaration: String,
+}
+
+/// Resolve and check a source's component modules without writing anything.
+pub(crate) fn plan(
     package: &Path,
     output: &Path,
     html: &Path,
     rust: &str,
     external: Option<&Path>,
     modules: &[JavaScriptModule],
-) -> Result<Vec<JavaScriptArtifact>> {
+) -> Result<Vec<PlannedModule>> {
     if modules.is_empty() {
         return Ok(Vec::new());
     }
@@ -165,38 +177,93 @@ pub(crate) fn prepare(
         .transpose()?
         .unwrap_or_else(|| rust.to_owned());
     let directory = output.join("fusor_javascript");
-    fs::create_dir_all(&directory)?;
-    let source_name: String = html
-        .strip_prefix(package)?
-        .to_string_lossy()
-        .chars()
+    let source_name = file_name_part(&html.strip_prefix(package)?.to_string_lossy(), false);
+    modules
+        .iter()
+        .map(|module| {
+            let component_name = file_name_part(&module.component, true);
+            let path = match &module.src {
+                Some(src) => module_source(package, html, module, src)?,
+                None => directory.join(format!("{source_name}-{component_name}.js")),
+            };
+            let declaration_name = format!("{source_name}-{component_name}.d.ts");
+            Ok(PlannedModule {
+                artifact: JavaScriptArtifact {
+                    id: module.id.clone(),
+                    path,
+                    source: html.to_owned(),
+                    line: module.line,
+                    column: module.column,
+                    component: module.component.clone(),
+                    inline: module.src.is_none(),
+                    declaration: directory.join(&declaration_name),
+                    declaration_name,
+                    rust_source: rust_source.clone(),
+                },
+                inline: module.src.is_none().then(|| module.content.clone()),
+                declaration: declaration(&rust, &module.component),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn write(modules: &[PlannedModule]) -> Result<()> {
+    for module in modules {
+        let declaration = &module.artifact.declaration;
+        fs::create_dir_all(declaration.parent().expect("declaration directory"))?;
+        if let Some(content) = &module.inline {
+            fs::write(&module.artifact.path, content)?;
+        }
+        fs::write(declaration, &module.declaration)?;
+    }
+    Ok(())
+}
+
+fn module_source(
+    package: &Path,
+    html: &Path,
+    module: &JavaScriptModule,
+    src: &str,
+) -> Result<PathBuf> {
+    let path = html
+        .parent()
+        .expect("HTML parent")
+        .join(src)
+        .canonicalize()
+        .map_err(|error| {
+            SourceError::at(
+                html,
+                module.line,
+                module.column,
+                format!("component JavaScript source {src}: {error}"),
+            )
+        })?;
+    let supported = path
+        .extension()
+        .is_some_and(|extension| extension == "js" || extension == "mjs" || extension == "ts");
+    if !path.starts_with(package) || !supported {
+        return Err(SourceError::at(
+            html,
+            module.line,
+            module.column,
+            "component module src must identify a .js, .mjs, or .ts file inside this package",
+        )
+        .into());
+    }
+    Ok(path)
+}
+
+/// Replace characters that are unsafe in generated file names with `-`.
+fn file_name_part(text: &str, keep_underscore: bool) -> String {
+    text.chars()
         .map(|character| {
-            if character.is_ascii_alphanumeric() {
+            if character.is_ascii_alphanumeric() || keep_underscore && character == '_' {
                 character
             } else {
                 '-'
             }
         })
-        .collect();
-    modules.iter().map(|module| {
-        let inline = module.src.is_none();
-        let component_name: String = module.component.chars().map(|character| if character.is_ascii_alphanumeric() || character == '_' { character } else { '-' }).collect();
-        let path = if let Some(src) = &module.src {
-            let path = html.parent().expect("HTML parent").join(src).canonicalize().map_err(|error| format!("{}:{}:{}: component JavaScript source {src}: {error}", html.display(), module.line, module.column))?;
-            if !path.starts_with(package) || !path.extension().is_some_and(|extension| extension == "js" || extension == "mjs" || extension == "ts") {
-                return Err(format!("{}:{}:{}: component module src must identify a .js, .mjs, or .ts file inside this package", html.display(), module.line, module.column).into());
-            }
-            path
-        } else {
-            let path = directory.join(format!("{}-{}.js", source_name, component_name));
-            fs::write(&path, &module.content)?;
-            path
-        };
-        let declaration_name = format!("{}-{}.d.ts", source_name, component_name);
-        let declaration_path = directory.join(&declaration_name);
-        fs::write(&declaration_path, declaration(&rust, &module.component))?;
-        Ok(JavaScriptArtifact { id: module.id.clone(), path, source: html.to_owned(), line: module.line, column: module.column, component: module.component.clone(), inline, declaration: declaration_path, declaration_name, rust_source: rust_source.clone() })
-    }).collect()
+        .collect()
 }
 
 #[cfg(test)]

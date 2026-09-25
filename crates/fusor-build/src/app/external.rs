@@ -9,11 +9,11 @@ use std::{
 };
 
 /// Links each external Rust module to at most one HTML file.
-pub(super) struct Linker {
-    package_root: PathBuf,
+pub(super) struct Linker<'a> {
+    package_root: &'a Path,
     /// The package's output directory, which may not hold authored sources.
     package_output: PathBuf,
-    out: PathBuf,
+    out: &'a Path,
     /// Canonical paths of the modules linked so far.
     linked: BTreeSet<PathBuf>,
 }
@@ -21,27 +21,30 @@ pub(super) struct Linker {
 pub(super) struct LinkedSource {
     /// Relative to the HTML file, as authored; the generated assertion compares it.
     pub(super) path: PathBuf,
-    pub(super) registration: PathBuf,
-    pub(super) registration_rust: String,
-    pub(super) registration_mod: TokenStream,
+    /// Appended to the HTML file's generated Rust.
+    pub(super) marker_code: String,
+    /// A generated file asserting that `path` holds this HTML file's bindings.
+    pub(super) registration_path: PathBuf,
+    pub(super) registration_code: String,
+    /// The `mod` item that compiles `registration_path`.
+    pub(super) registration_item: TokenStream,
     pub(super) line: usize,
     pub(super) column: usize,
 }
 
-impl Linker {
+impl<'a> Linker<'a> {
     /// `output` is the configured output directory, relative to the package.
-    pub(super) fn new(package_root: &Path, output: &Path, out: &Path) -> Self {
+    pub(super) fn new(package_root: &'a Path, output: &Path, out: &'a Path) -> Self {
         Self {
-            package_root: package_root.to_owned(),
+            package_root,
             package_output: package_root.join(output),
-            out: out.to_owned(),
+            out,
             linked: BTreeSet::new(),
         }
     }
 
     /// Check an external Rust source and prepare the assertion that its module
-    /// contains this HTML file's `fusor::bindings!`. Also returns the marker the
-    /// generated Rust must declare.
+    /// contains this HTML file's `fusor::bindings!`.
     pub(super) fn link(
         &mut self,
         name: &str,
@@ -49,7 +52,7 @@ impl Linker {
         source: &str,
         offset: usize,
         rust: &ExternalRust,
-    ) -> Result<(LinkedSource, String)> {
+    ) -> Result<LinkedSource> {
         let path = html_path.parent().expect("HTML parent").join(&rust.src);
         let canonical = path.canonicalize().map_err(|error| {
             SourceError::at_offset(
@@ -59,7 +62,7 @@ impl Linker {
                 format!("external Rust source {}: {error}", path.display()),
             )
         })?;
-        if !canonical.starts_with(&self.package_root)
+        if !canonical.starts_with(self.package_root)
             || canonical.starts_with(&self.package_output)
             || canonical
                 .extension()
@@ -75,34 +78,35 @@ impl Linker {
             .into());
         }
         let module: syn::Path = syn::parse_str(&rust.module)?;
+        // `name` is a module identifier: discovered `@` sources never have Rust.
         let marker = format_ident!("__FUSOR_BINDINGS_{}", name.to_uppercase());
         let expected = path.to_str().ok_or("external source path must be UTF-8")?;
-        let registration = self
+        let registration_path = self
             .out
             .join(format!("{BINDINGS_PREFIX}{name}_registration.rs"));
-        let registration_path = registration
+        let registration_file = registration_path
             .to_str()
             .ok_or("registration path must be UTF-8")?;
         let registration_mod = format_ident!("__fusor_registration_{name}");
         let (line, column) = location(source, offset);
-        let linked = LinkedSource {
-            registration_rust: quote! {
+        Ok(LinkedSource {
+            marker_code: quote! {
+                #[doc(hidden)]
+                pub(crate) const #marker: (&str, &str) = __FUSOR_BINDINGS_ORIGIN;
+            }
+            .to_string(),
+            registration_code: quote! {
                 const _: () = assert!(
                     ::fusor::authoring::source_matches(#module::#marker, #expected),
                     "external Rust source mismatch: src must identify the module containing fusor::bindings!(name)"
                 );
             }
             .to_string(),
-            registration_mod: quote! { #[path = #registration_path] mod #registration_mod; },
-            registration,
+            registration_item: quote! { #[path = #registration_file] mod #registration_mod; },
+            registration_path,
             path,
             line,
             column,
-        };
-        let marker = quote! {
-            #[doc(hidden)]
-            pub(crate) const #marker: (&str, &str) = __FUSOR_BINDINGS_ORIGIN;
-        };
-        Ok((linked, marker.to_string()))
+        })
     }
 }

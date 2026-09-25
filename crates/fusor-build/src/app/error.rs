@@ -4,16 +4,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// A problem in one application source, shown as `path[:line:column]: message`.
+/// A problem with one file or directory of the application, shown as
+/// `path[:line:column]: message`.
 #[derive(Debug)]
-pub(super) struct SourceError {
+pub(crate) struct SourceError {
     path: PathBuf,
     location: Option<(usize, usize)>,
     message: String,
 }
 
 impl SourceError {
-    pub(super) fn new(path: &Path, message: impl fmt::Display) -> Self {
+    pub(crate) fn new(path: &Path, message: impl fmt::Display) -> Self {
         Self {
             path: path.to_owned(),
             location: None,
@@ -21,14 +22,14 @@ impl SourceError {
         }
     }
 
-    pub(super) fn at(path: &Path, line: usize, column: usize, message: impl fmt::Display) -> Self {
+    pub(crate) fn at(path: &Path, line: usize, column: usize, message: impl fmt::Display) -> Self {
         Self {
             location: Some((line, column)),
             ..Self::new(path, message)
         }
     }
 
-    pub(super) fn at_offset(
+    pub(crate) fn at_offset(
         path: &Path,
         source: &str,
         offset: usize,
@@ -38,7 +39,7 @@ impl SourceError {
         Self::at(path, line, column, message)
     }
 
-    pub(super) fn extracted(path: &Path, error: ExtractError) -> Self {
+    pub(crate) fn extracted(path: &Path, error: ExtractError) -> Self {
         Self::at(path, error.line, error.column, error.message)
     }
 }
