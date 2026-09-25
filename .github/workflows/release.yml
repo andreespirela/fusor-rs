@@ -55,7 +55,7 @@ jobs:
       - name: Read the version
         id: version
         run: echo "version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "fusor-core") | .version')" >> "$GITHUB_OUTPUT"
-      - run: cargo build --locked --release --target ${{ matrix.target }} -p fusor-cli -p cargo-fusor
+      - run: cargo build --locked --release --target ${{ matrix.target }} -p fusor-cli
       # Checks each binary reports the version and runs from the finished archive.
       - run: cargo run --locked -p fusor-release -- package --target ${{ matrix.target }} --output "target/release-artifacts/v${{ steps.version.outputs.version }}"
       - name: Smoke-test the binary against a new application

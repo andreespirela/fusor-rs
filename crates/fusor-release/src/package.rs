@@ -1,4 +1,4 @@
-//! The binaries must report the expected version and the archive must unpack
+//! The binary must report the expected version and the archive must unpack
 //! before it is announced.
 use crate::{Result, archive, workspace_root, workspace_version};
 use sha2::{Digest, Sha256};
@@ -8,7 +8,7 @@ use std::{
     process::Command,
 };
 
-const BINARIES: [&str; 2] = ["fusor", "cargo-fusor"];
+const BINARY: &str = "fusor";
 
 pub fn run(target: &str, binary_directory: Option<&Path>, output: &Path) -> Result {
     let root = workspace_root();
@@ -25,11 +25,9 @@ pub fn run(target: &str, binary_directory: Option<&Path>, output: &Path) -> Resu
     let _ = fs::remove_dir_all(&stage);
     fs::create_dir_all(&stage)?;
 
-    for binary in BINARIES {
-        let source = binaries.join(format!("{binary}{suffix}"));
-        verify_version(&source, &version)?;
-        fs::copy(&source, stage.join(format!("{binary}{suffix}")))?;
-    }
+    let source = binaries.join(format!("{BINARY}{suffix}"));
+    verify_version(&source, &version)?;
+    fs::copy(&source, stage.join(format!("{BINARY}{suffix}")))?;
     fs::copy(root.join("LICENSE"), stage.join("LICENSE"))?;
     fs::copy(
         root.join("crates/fusor-cli/README.md"),
@@ -83,15 +81,13 @@ fn run_from_archive(archive_path: &Path, name: &str, suffix: &str) -> Result {
     fs::create_dir_all(&unpacked)?;
     let file = fs::File::open(archive_path)?;
     tar::Archive::new(flate2::read::GzDecoder::new(file)).unpack(&unpacked)?;
-    for binary in BINARIES {
-        let executable = unpacked.join(name).join(format!("{binary}{suffix}"));
-        let status = Command::new(&executable)
-            .arg("--help")
-            .stdout(std::process::Stdio::null())
-            .status()?;
-        if !status.success() {
-            return Err(format!("{} --help failed from the archive", executable.display()).into());
-        }
+    let executable = unpacked.join(name).join(format!("{BINARY}{suffix}"));
+    let status = Command::new(&executable)
+        .arg("--help")
+        .stdout(std::process::Stdio::null())
+        .status()?;
+    if !status.success() {
+        return Err(format!("{} --help failed from the archive", executable.display()).into());
     }
     fs::remove_dir_all(&unpacked)?;
     Ok(())

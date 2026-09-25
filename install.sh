@@ -4,7 +4,7 @@
 #   curl -fsSL https://fusor.build/install.sh | sh
 #
 # Install a specific release with `sh -s v0.1.0`, or FUSOR_VERSION=v0.1.0.
-# FUSOR_INSTALL chooses the directory (default ~/.fusor); binaries go in its bin/.
+# FUSOR_INSTALL chooses the directory (default ~/.fusor); the binary goes in its bin/.
 set -eu
 
 repository="fusor-rs/fusor"
@@ -70,10 +70,10 @@ fi
 
 tar -xzf "$temporary/$archive" -C "$temporary"
 mkdir -p "$install_dir/bin"
-for binary in fusor cargo-fusor; do
-  mv "$temporary/fusor-${version#v}-$target/$binary" "$install_dir/bin/$binary"
-  chmod +x "$install_dir/bin/$binary"
-done
+mv "$temporary/fusor-${version#v}-$target/fusor" "$install_dir/bin/fusor"
+chmod +x "$install_dir/bin/fusor"
+# Releases up to 0.1.0 also installed cargo-fusor; don't leave a stale copy.
+rm -f "$install_dir/bin/cargo-fusor"
 
 echo "Installed $("$install_dir/bin/fusor" --version) to $install_dir/bin"
 
