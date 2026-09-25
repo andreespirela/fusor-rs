@@ -31,17 +31,17 @@ impl Preview {
         text: &str,
     ) -> Result<Self, JsValue> {
         let props = host
-            .query_selector(":scope > script[data-rf-props]")?
+            .query_selector(":scope > script[data-fusor-props]")?
             .ok_or_else(|| JsValue::from_str("missing island props"))?;
         let attributes = [
             "id",
-            "data-rf-island",
-            "data-rf-unit",
-            "data-rf-generation",
-            "data-rf-schema",
-            "data-rf-hash",
-            "data-rf-activate",
-            "data-rf-prefetch",
+            "data-fusor-island",
+            "data-fusor-unit",
+            "data-fusor-generation",
+            "data-fusor-schema",
+            "data-fusor-hash",
+            "data-fusor-activate",
+            "data-fusor-prefetch",
         ]
         .into_iter()
         .map(|name| (name, host.get_attribute(name)))
@@ -60,7 +60,7 @@ impl Preview {
             && self.initial.parent_element().as_ref() == Some(&self.host)
             && self.props.parent_element().as_ref() == Some(&self.host)
             && self.props.get_attribute("type").as_deref() == Some("application/json")
-            && self.props.has_attribute("data-rf-props")
+            && self.props.has_attribute("data-fusor-props")
             && self.props.text_content().as_deref() == Some(self.text.as_str())
             && self
                 .attributes

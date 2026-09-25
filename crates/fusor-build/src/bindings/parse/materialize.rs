@@ -61,7 +61,7 @@ pub(super) fn components(
         component.empty = html.trim().is_empty();
         component.html = if component.fragment {
             format!(
-                "<template data-rf-component=\"{}\" data-rf-version=\"{}\">{}</template>",
+                "<template data-fusor-component=\"{}\" data-fusor-version=\"{}\">{}</template>",
                 component.id,
                 template::VERSION,
                 html

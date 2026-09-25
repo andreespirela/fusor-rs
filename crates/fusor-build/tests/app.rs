@@ -100,8 +100,8 @@ fn source_graph_links_unique_templates_once_and_emits_normal_rust_modules() {
     let out = dir.path().join("out");
     let artifact = generate(&dir.path().join("Cargo.toml"), &out).unwrap();
     let html = fs::read_to_string(&artifact.html).unwrap();
-    assert_eq!(html.matches("data-rf-component=\"0\"").count(), 1);
-    assert_eq!(html.matches("data-rf-component=").count(), 2);
+    assert_eq!(html.matches("data-fusor-component=\"0\"").count(), 1);
+    assert_eq!(html.matches("data-fusor-component=").count(), 2);
     assert!(html.find("<!-- literal </body> -->").unwrap() < html.find("<template").unwrap());
     assert!(html.find("<template").unwrap() < html.rfind("</body>").unwrap());
     assert!(!html.contains("text/rust"));

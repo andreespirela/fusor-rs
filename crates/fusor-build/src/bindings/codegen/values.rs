@@ -7,15 +7,15 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 
 pub(super) fn element(id: ElementId) -> Ident {
-    format_ident!("__rf_element_{}", id.index())
+    format_ident!("__fusor_element_{}", id.index())
 }
 
 pub(super) fn point(id: MountId) -> Ident {
-    format_ident!("__rf_mount_{}", id.index())
+    format_ident!("__fusor_mount_{}", id.index())
 }
 
 pub(super) fn text(id: TextId) -> Ident {
-    format_ident!("__rf_text_{}", id.index())
+    format_ident!("__fusor_text_{}", id.index())
 }
 
 // The typed path changes the generated closure's result representation. Keep

@@ -23,7 +23,7 @@ impl Html {
         let offset = self
             .first_open
             .ok_or("keyed rows require an element root")?;
-        let mut attribute = String::from(" data-rf-key=\"");
+        let mut attribute = String::from(" data-fusor-key=\"");
         escape_into(
             &mut attribute,
             &fusor_islands::encode(key).map_err(|error| error.to_string())?,
@@ -169,7 +169,7 @@ impl Writer {
             serde_json::to_writer(&mut writer.key_json, key).map_err(|error| error.to_string())?;
             let json = std::str::from_utf8(&writer.key_json).map_err(|error| error.to_string())?;
             writer.key_attribute.clear();
-            writer.key_attribute.push_str(" data-rf-key=\"");
+            writer.key_attribute.push_str(" data-fusor-key=\"");
             escape_into(&mut writer.key_attribute, json, true);
             writer.key_attribute.push('"');
             writer.source.insert_str(offset, &writer.key_attribute);
@@ -359,7 +359,7 @@ mod tests {
         let html = writer.finish().with_key(&9).unwrap();
         assert_eq!(
             html.as_str(),
-            "<ul data-rf-key=\"9\"><li data-rf-key=\"&quot;日本語&lt;&amp;&quot;\"><input></li></ul>"
+            "<ul data-fusor-key=\"9\"><li data-fusor-key=\"&quot;日本語&lt;&amp;&quot;\"><input></li></ul>"
         );
     }
 
@@ -436,7 +436,7 @@ mod tests {
             assert!(
                 compiled
                     .as_str()
-                    .starts_with("<!--before root--><section data-rf-key=\"")
+                    .starts_with("<!--before root--><section data-fusor-key=\"")
             );
 
             let mut parent = Writer::new();

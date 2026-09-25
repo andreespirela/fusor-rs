@@ -26,16 +26,16 @@ fn children_factory(
     };
     let prepare = component(&components[index], delivery, components, ready);
     let locals = clone_locals(&components[index].async_locals);
-    let capture_ready = ready.then(|| quote! { let __rf_ready = ::std::rc::Rc::clone(&ready); });
-    let expose_ready = ready.then(|| quote! { let ready = ::std::rc::Rc::clone(&__rf_ready); });
+    let capture_ready = ready.then(|| quote! { let __fusor_ready = ::std::rc::Rc::clone(&ready); });
+    let expose_ready = ready.then(|| quote! { let ready = ::std::rc::Rc::clone(&__fusor_ready); });
     quote! {{
-        let __rf_capture = ::std::rc::Rc::clone(&state);
-        let __rf_forward = __rf_children.clone();
+        let __fusor_capture = ::std::rc::Rc::clone(&state);
+        let __fusor_forward = __fusor_children.clone();
         #capture_ready
         #locals
-        ::fusor::dom::Children::new(move |__rf_parent| {
-            let state = ::std::rc::Rc::clone(&__rf_capture);
-            let __rf_children = __rf_forward.clone();
+        ::fusor::dom::Children::new(move |__fusor_parent| {
+            let state = ::std::rc::Rc::clone(&__fusor_capture);
+            let __fusor_children = __fusor_forward.clone();
             #expose_ready
             #locals
             #prepare
@@ -69,8 +69,8 @@ fn browser_binding(
     {
         let slot = id.index();
         let point = point(*id);
-        let read = format_ident!("__rf_branch_read_{}", slot);
-        let prepare = format_ident!("__rf_branch_prepare_{}", slot);
+        let read = format_ident!("__fusor_branch_read_{}", slot);
+        let prepare = format_ident!("__fusor_branch_prepare_{}", slot);
         let selection = super::control::selection(value, cases, snapshots);
         let factories =
             branch_factories(cases, snapshots, components, delivery_metadata, has_ready);
@@ -81,7 +81,7 @@ fn browser_binding(
                 let (#read, #prepare) = {
                     // Give rustc the selection payload before checking projections
                     // in the hoisted constructor; application types stay inferred.
-                    fn __rf_branch_parts<T, R, F>(read: R, prepare: F) -> (R, F)
+                    fn __fusor_branch_parts<T, R, F>(read: R, prepare: F) -> (R, F)
                     where
                         T: ::std::clone::Clone + ::std::cmp::PartialEq + 'static,
                         R: ::std::ops::Fn() -> (usize, T),
@@ -90,20 +90,20 @@ fn browser_binding(
                     {
                         (read, prepare)
                     }
-                    let __rf_read_state = ::std::rc::Rc::clone(&state);
-                    let __rf_capture = ::std::rc::Rc::clone(&state);
-                    let __rf_children = __rf_children.clone();
-                    __rf_branch_parts(
-                        { #clones #capture_ready move || { let state = &__rf_read_state; #selection } },
-                        { #clones #capture_ready move |__rf_case, __rf_data, __rf_parent| {
-                            let state = ::std::rc::Rc::clone(&__rf_capture);
-                            match __rf_case { #factories _ => unreachable!("generated branch index") }
+                    let __fusor_read_state = ::std::rc::Rc::clone(&state);
+                    let __fusor_capture = ::std::rc::Rc::clone(&state);
+                    let __fusor_children = __fusor_children.clone();
+                    __fusor_branch_parts(
+                        { #clones #capture_ready move || { let state = &__fusor_read_state; #selection } },
+                        { #clones #capture_ready move |__fusor_case, __fusor_data, __fusor_parent| {
+                            let state = ::std::rc::Rc::clone(&__fusor_capture);
+                            match __fusor_case { #factories _ => unreachable!("generated branch index") }
                         } }
                     )
                 };
             },
-            ordinary: quote_spanned! {span=> __rf_scope.branch_at(&#point, #read, #prepare)?; },
-            coherent: quote_spanned! {span=> __rf_frame.branch_at(#slot, &#point, &#read, &#prepare)?; },
+            ordinary: quote_spanned! {span=> __fusor_scope.branch_at(&#point, #read, #prepare)?; },
+            coherent: quote_spanned! {span=> __fusor_frame.branch_at(#slot, &#point, &#read, &#prepare)?; },
         };
     }
     if let Binding::ForEach {
@@ -115,9 +115,9 @@ fn browser_binding(
     {
         let slot = node.index();
         let node = element(*node);
-        let read = format_ident!("__rf_list_read_{}", slot);
-        let key_fn = format_ident!("__rf_list_key_{}", slot);
-        let prepare = format_ident!("__rf_list_prepare_{}", slot);
+        let read = format_ident!("__fusor_list_read_{}", slot);
+        let key_fn = format_ident!("__fusor_list_key_{}", slot);
+        let prepare = format_ident!("__fusor_list_prepare_{}", slot);
         let row_constructor = if components[*body].item_only_row {
             quote! { ::fusor_components::ForEach::item_row }
         } else {
@@ -126,25 +126,25 @@ fn browser_binding(
         let row = component(&components[*body], delivery_metadata, components, has_ready);
         let ready_capture = has_ready.then(|| {
             quote! {
-                let __rf_read_ready = ::std::rc::Rc::clone(&ready);
-                let __rf_key_ready = ::std::rc::Rc::clone(&ready);
-                let __rf_row_ready = ::std::rc::Rc::clone(&ready);
+                let __fusor_read_ready = ::std::rc::Rc::clone(&ready);
+                let __fusor_key_ready = ::std::rc::Rc::clone(&ready);
+                let __fusor_row_ready = ::std::rc::Rc::clone(&ready);
             }
         });
-        let read_ready = has_ready.then(|| quote! { let ready = &__rf_read_ready; });
-        let key_ready = has_ready.then(|| quote! { let ready = &__rf_key_ready; });
-        let row_ready = has_ready.then(|| quote! { let ready = &__rf_row_ready; });
+        let read_ready = has_ready.then(|| quote! { let ready = &__fusor_read_ready; });
+        let key_ready = has_ready.then(|| quote! { let ready = &__fusor_key_ready; });
+        let row_ready = has_ready.then(|| quote! { let ready = &__fusor_row_ready; });
         let clones = clone_locals(locals);
-        let ordinary_row = quote! { move |entry| #prepare(entry, &__rf_parent) };
+        let ordinary_row = quote! { move |entry| #prepare(entry, &__fusor_parent) };
         let mount = if shared {
-            quote! { __rf_scope.keyed_hydrated(&#node, #read, #key_fn, #ordinary_row, |key| ::fusor_islands::encode(key).map_err(|error| ::fusor::dom::JsValue::from_str(&error.to_string())))?; }
+            quote! { __fusor_scope.keyed_hydrated(&#node, #read, #key_fn, #ordinary_row, |key| ::fusor_islands::encode(key).map_err(|error| ::fusor::dom::JsValue::from_str(&error.to_string())))?; }
         } else {
-            quote! { __rf_scope.keyed(&#node, #read, #key_fn, #ordinary_row)?; }
+            quote! { __fusor_scope.keyed(&#node, #read, #key_fn, #ordinary_row)?; }
         };
         return BrowserBinding {
             shared: quote_spanned! {span=>
                 let (#read, #key_fn, #prepare) = {
-                    fn __rf_list_parts<T, K, R, KF, F>(read: R, key: KF, prepare: F) -> (R, KF, F)
+                    fn __fusor_list_parts<T, K, R, KF, F>(read: R, key: KF, prepare: F) -> (R, KF, F)
                     where
                         T: ::std::clone::Clone + ::std::cmp::PartialEq + 'static,
                         K: ::std::cmp::Ord + ::std::clone::Clone + 'static,
@@ -156,26 +156,26 @@ fn browser_binding(
                         (read, key, prepare)
                     }
                     #ready_capture
-                    let __rf_read_state = ::std::rc::Rc::clone(&state);
-                    let __rf_key_state = ::std::rc::Rc::clone(&state);
-                    let __rf_row_state = ::std::rc::Rc::clone(&state);
-                    let __rf_children = __rf_children.clone();
-                    __rf_list_parts(
-                        { #clones move || { #read_ready let state = &__rf_read_state; ::fusor_components::ForEach::entries({ #items }) } },
-                        { #clones move |entry| { #key_ready let state = &__rf_key_state; ::fusor_components::ForEach::key(entry, #key) } },
-                        { #clones move |entry, __rf_parent| {
+                    let __fusor_read_state = ::std::rc::Rc::clone(&state);
+                    let __fusor_key_state = ::std::rc::Rc::clone(&state);
+                    let __fusor_row_state = ::std::rc::Rc::clone(&state);
+                    let __fusor_children = __fusor_children.clone();
+                    __fusor_list_parts(
+                        { #clones move || { #read_ready let state = &__fusor_read_state; ::fusor_components::ForEach::entries({ #items }) } },
+                        { #clones move |entry| { #key_ready let state = &__fusor_key_state; ::fusor_components::ForEach::key(entry, #key) } },
+                        { #clones move |entry, __fusor_parent| {
                             #row_ready
-                            let state = #row_constructor(::std::rc::Rc::clone(&__rf_row_state), entry);
+                            let state = #row_constructor(::std::rc::Rc::clone(&__fusor_row_state), entry);
                             #row
                         } }
                     )
                 };
             },
             ordinary: quote_spanned! {span=> {
-                let __rf_parent = __rf_scope.owner();
+                let __fusor_parent = __fusor_scope.owner();
                 #mount
             } },
-            coherent: quote_spanned! {span=> __rf_frame.keyed(#slot, #node.as_ref(), &#read, &#key_fn, &#prepare)?; },
+            coherent: quote_spanned! {span=> __fusor_frame.keyed(#slot, #node.as_ref(), &#read, &#key_fn, &#prepare)?; },
         };
     }
     if let Binding::Invocation {
@@ -192,7 +192,7 @@ fn browser_binding(
                 .iter()
                 .any(|input| matches!(input.value, InputValue::Content { .. }))
         {
-            let make = format_ident!("__rf_make_children_{}", id.index());
+            let make = format_ident!("__fusor_make_children_{}", id.index());
             let children = children_factory(Some(*child), components, delivery_metadata, has_ready);
             let clones = clone_locals(&components[*child].async_locals);
             let ready = has_ready.then(|| quote! { let ready = ::std::rc::Rc::clone(&ready); });
@@ -200,7 +200,7 @@ fn browser_binding(
                 shared: quote_spanned! {span=>
                     let #make = {
                         let state = ::std::rc::Rc::clone(&state);
-                        let __rf_children = __rf_children.clone();
+                        let __fusor_children = __fusor_children.clone();
                         #clones
                         #ready
                         move || #children
@@ -208,7 +208,7 @@ fn browser_binding(
                 },
                 ordinary: invocation(
                     item,
-                    quote! {{ let __rf_make_children = #make; __rf_make_children() }},
+                    quote! {{ let __fusor_make_children = #make; __fusor_make_children() }},
                     false,
                     components,
                     delivery_metadata,
@@ -234,7 +234,7 @@ fn browser_binding(
         ..
     } = item
     {
-        let render = format_ident!("__rf_await_render_{}", node.index());
+        let render = format_ident!("__fusor_await_render_{}", node.index());
         let node = element(*node);
         let body = coherent_binding(item, has_ready, components, delivery_metadata, locals);
         let clones = clone_locals(locals);
@@ -245,20 +245,20 @@ fn browser_binding(
                     #clones
                     #ready
                     let state = ::std::rc::Rc::clone(&state);
-                    let __rf_children = __rf_children.clone();
+                    let __fusor_children = __fusor_children.clone();
                     let #node = #node.clone();
-                    move |__rf_frame: &mut ::fusor::dom::coherent::Frame<'_>| {
-                        let __rf_attempt = __rf_frame.attempt;
+                    move |__fusor_frame: &mut ::fusor::dom::coherent::Frame<'_>| {
+                        let __fusor_attempt = __fusor_frame.attempt;
                         #body
                         ::std::result::Result::<(), ::std::string::String>::Ok(())
                     }
                 };
             },
             ordinary: quote_spanned! {span=> {
-                let __rf_region_root = #node.clone();
-                __rf_scope.async_region(&__rf_region_root, ::fusor::coherence::AsyncBoundary::coherent(), #render)?;
+                let __fusor_region_root = #node.clone();
+                __fusor_scope.async_region(&__fusor_region_root, ::fusor::coherence::AsyncBoundary::coherent(), #render)?;
             } },
-            coherent: quote_spanned! {span=> #render(__rf_frame)?; },
+            coherent: quote_spanned! {span=> #render(__fusor_frame)?; },
         };
     }
     BrowserBinding {
@@ -294,7 +294,7 @@ fn invocation(
             .iter()
             .any(|input| matches!(input.value, InputValue::Content { .. }))
     {
-        return quote_spanned! {span=> __rf_frame.reject("projected content cannot participate in coherent rendering")?; };
+        return quote_spanned! {span=> __fusor_frame.reject("projected content cannot participate in coherent rendering")?; };
     }
     let point = point(*id);
     let condition = condition
@@ -320,11 +320,11 @@ fn invocation(
                     has_ready,
                 );
                 quote_spanned! {origin.span()=> {
-                    let __rf_capture = ::std::rc::Rc::clone(state);
-                    let __rf_forward = __rf_children.clone();
-                    ::fusor::dom::Content::from_prepared(move |__rf_parent| {
-                        let state = ::std::rc::Rc::clone(&__rf_capture);
-                        let __rf_children = __rf_forward.clone();
+                    let __fusor_capture = ::std::rc::Rc::clone(state);
+                    let __fusor_forward = __fusor_children.clone();
+                    ::fusor::dom::Content::from_prepared(move |__fusor_parent| {
+                        let state = ::std::rc::Rc::clone(&__fusor_capture);
+                        let __fusor_children = __fusor_forward.clone();
                         #prepare
                     })
                 }}
@@ -334,7 +334,7 @@ fn invocation(
     });
     if coherent {
         let slot = id.index();
-        return quote_spanned! {span=> __rf_frame.component_at(#slot, &#point, if #condition { Some({ #key }) } else { None }, |owner| {
+        return quote_spanned! {span=> __fusor_frame.component_at(#slot, &#point, if #condition { Some({ #key }) } else { None }, |owner| {
             type __FusorInputs = <#ty as ::fusor::dom::FromInputs>::Inputs;
             <#ty as ::fusor::dom::FromInputs>::from_inputs(__FusorInputs { #(#fields),* }, owner)
         }, #children)?; };
@@ -342,19 +342,19 @@ fn invocation(
     let local_clones = clone_locals(locals);
     quote_spanned! {span=> {
         #local_clones
-        let __rf_identity_state = ::std::rc::Rc::clone(&state);
-        let __rf_child_state = ::std::rc::Rc::clone(&state);
-        let __rf_supplied = #children;
-        let __rf_children = __rf_children.clone();
-        __rf_scope.component_at_with_children(&#point, { #local_clones move || {
-            let state = &__rf_identity_state;
+        let __fusor_identity_state = ::std::rc::Rc::clone(&state);
+        let __fusor_child_state = ::std::rc::Rc::clone(&state);
+        let __fusor_supplied = #children;
+        let __fusor_children = __fusor_children.clone();
+        __fusor_scope.component_at_with_children(&#point, { #local_clones move || {
+            let state = &__fusor_identity_state;
             if #condition { ::std::option::Option::Some({ #key }) }
             else { ::std::option::Option::None }
         }}, { #local_clones move |owner| {
-            let state = &__rf_child_state;
+            let state = &__fusor_child_state;
             type __FusorInputs = <#ty as ::fusor::dom::FromInputs>::Inputs;
             <#ty as ::fusor::dom::FromInputs>::from_inputs(__FusorInputs { #(#fields),* }, owner)
-        }}, __rf_supplied)?;
+        }}, __fusor_supplied)?;
     }}
 }
 
@@ -390,16 +390,16 @@ fn binding(
                         #[derive(Clone)]
                         struct __Params { #(pub #names: ::std::string::String),* }
                         let #alias = __Params {
-                            #(#names: __rf_match.params.get(#keys)
+                            #(#names: __fusor_match.params.get(#keys)
                                 .expect("validated route capture").clone()),*
                         };
                     }
                 });
                 let factory = quote! {
-                    move |__rf_parent: &::fusor::OwnerHandle,
-                          __rf_match: &::fusor_router::pattern::Match| {
-                        let state = ::std::rc::Rc::clone(&__rf_capture);
-                        let __rf_children = __rf_forward.clone();
+                    move |__fusor_parent: &::fusor::OwnerHandle,
+                          __fusor_match: &::fusor_router::pattern::Match| {
+                        let state = ::std::rc::Rc::clone(&__fusor_capture);
+                        let __fusor_children = __fusor_forward.clone();
                         #clones
                         #params
                         #prepare
@@ -411,15 +411,15 @@ fn binding(
                     quote! { ::fusor_router::browser::declarative::RouteView::fallback(#factory) }
                 };
                 quote! {{
-                    let __rf_capture = ::std::rc::Rc::clone(&state);
-                    let __rf_forward = __rf_children.clone();
+                    let __fusor_capture = ::std::rc::Rc::clone(&state);
+                    let __fusor_forward = __fusor_children.clone();
                     #clones
                     #construct
                 }}
             });
             return quote_spanned! {span=> {
                 ::fusor_router::browser::declarative::mount_routes(
-                    &mut __rf_scope, &#point, ::std::env!("FUSOR_BASE_PATH"),
+                    &mut __fusor_scope, &#point, ::std::env!("FUSOR_BASE_PATH"),
                     ::std::vec![#(#factories),*]
                 )?;
             }};
@@ -427,7 +427,7 @@ fn binding(
 
         Binding::Children { point: id, .. } => {
             let point = point(*id);
-            quote! { __rf_scope.children_at(&#point, &__rf_children)?; }
+            quote! { __fusor_scope.children_at(&#point, &__fusor_children)?; }
         }
         Binding::Invocation { children, .. } => {
             let children = children_factory(*children, components, delivery_metadata, has_ready);
@@ -463,9 +463,9 @@ fn binding(
                 coherent_binding(binding, has_ready, components, delivery_metadata, locals)
             });
             quote_spanned! {span=>
-                let __rf_region_root = #node.clone();
-                __rf_scope.async_region(&__rf_region_root, (#value).clone(), move |__rf_frame| {
-                    let __rf_attempt = __rf_frame.attempt;
+                let __fusor_region_root = #node.clone();
+                __fusor_scope.async_region(&__fusor_region_root, (#value).clone(), move |__fusor_frame| {
+                    let __fusor_attempt = __fusor_frame.attempt;
                     #(#bindings)*
                     ::std::result::Result::Ok(())
                 })?;
@@ -474,27 +474,27 @@ fn binding(
         Binding::Text { slot, value } => {
             let node = text(*slot);
             if typed_text_eligible(value) {
-                quote_spanned! {span=> __rf_scope.text_node_value(&#node, move || {
+                quote_spanned! {span=> __fusor_scope.text_node_value(&#node, move || {
                     use ::fusor::dom::text_value::Convert as _;
                     (&::fusor::dom::text_value::Value(&(#value))).__fusor_into_text()
                 })?; }
             } else {
-                quote_spanned! {span=> __rf_scope.text_node_string(&#node, move || ::std::string::ToString::to_string(&(#value)))?; }
+                quote_spanned! {span=> __fusor_scope.text_node_string(&#node, move || ::std::string::ToString::to_string(&(#value)))?; }
             }
         }
         Binding::Attribute { node, name, value } => {
             let node = element(*node);
             let value = string(value);
-            quote_spanned! {span=> __rf_scope.attr(&#node, #name, move || ::std::option::Option::Some(#value))?; }
+            quote_spanned! {span=> __fusor_scope.attr(&#node, #name, move || ::std::option::Option::Some(#value))?; }
         }
         Binding::Property { node, name, value } => {
             let node = element(*node);
-            quote_spanned! {span=> __rf_scope.property(&#node, #name, move || { #value })?; }
+            quote_spanned! {span=> __fusor_scope.property(&#node, #name, move || { #value })?; }
         }
         Binding::Boolean { node, name, value } => {
             let node = element(*node);
             quote_spanned! {span=>
-                __rf_scope.attr(&#node, #name, move || {
+                __fusor_scope.attr(&#node, #name, move || {
                     let value: bool = { #value };
                     value.then(::std::string::String::new)
                 })?;
@@ -503,15 +503,15 @@ fn binding(
         Binding::Value { node, value } => {
             let node = element(*node);
             let value = string(value);
-            quote_spanned! {span=> __rf_scope.value(&#node, move || { #value })?; }
+            quote_spanned! {span=> __fusor_scope.value(&#node, move || { #value })?; }
         }
         Binding::Checked { node, value } => {
             let node = element(*node);
-            quote_spanned! {span=> __rf_scope.checked(&#node, move || { #value })?; }
+            quote_spanned! {span=> __fusor_scope.checked(&#node, move || { #value })?; }
         }
         Binding::Class { node, name, value } => {
             let node = element(*node);
-            quote_spanned! {span=> __rf_scope.class(&#node, #name, move || { #value })?; }
+            quote_spanned! {span=> __fusor_scope.class(&#node, #name, move || { #value })?; }
         }
         Binding::Event {
             node,
@@ -519,20 +519,20 @@ fn binding(
             handler,
         } => {
             let node = element(*node);
-            quote_spanned! {span=> __rf_scope.on(&#node, #name, move |event| { #handler })?; }
+            quote_spanned! {span=> __fusor_scope.on(&#node, #name, move |event| { #handler })?; }
         }
         Binding::Field { node, value } => {
             let node = element(*node);
-            quote_spanned! {span=> ::fusor_std::forms::browser::bind(&mut __rf_scope, &#node, (#value).clone())?; }
+            quote_spanned! {span=> ::fusor_std::forms::browser::bind(&mut __fusor_scope, &#node, (#value).clone())?; }
         }
         Binding::Input { node, kind, value } => {
             let node = element(*node);
             match kind {
                 InputKind::Value => {
-                    quote_spanned! {span=> __rf_scope.input(&#node, (#value).clone())?; }
+                    quote_spanned! {span=> __fusor_scope.input(&#node, (#value).clone())?; }
                 }
                 InputKind::Checked => {
-                    quote_spanned! {span=> __rf_scope.checkbox(&#node, (#value).clone())?; }
+                    quote_spanned! {span=> __fusor_scope.checkbox(&#node, (#value).clone())?; }
                 }
             }
         }
@@ -549,14 +549,14 @@ fn binding(
                 .unwrap_or_else(|| quote! { true });
             let pair = key
                 .as_ref()
-                .map(|value| quote_spanned! {value.span()=> ({ #value }, __rf_content) })
-                .unwrap_or_else(|| quote! { ((), __rf_content) });
+                .map(|value| quote_spanned! {value.span()=> ({ #value }, __fusor_content) })
+                .unwrap_or_else(|| quote! { ((), __fusor_content) });
             quote_spanned! {span=>
-                __rf_scope.slot_with(&#node, move || {
+                __fusor_scope.slot_with(&#node, move || {
                     if #condition {
-                        let __rf_content: ::std::option::Option<::fusor::dom::Content> =
+                        let __fusor_content: ::std::option::Option<::fusor::dom::Content> =
                             ::std::convert::Into::into({ #content });
-                        __rf_content.map(|__rf_content| #pair)
+                        __fusor_content.map(|__fusor_content| #pair)
                     } else {
                         ::std::option::Option::None
                     }
@@ -570,7 +570,7 @@ fn binding(
         #locals
         #ready
         let state = ::std::rc::Rc::clone(&state);
-        let __rf_children = __rf_children.clone();
+        let __fusor_children = __fusor_children.clone();
         #operation
     }}
 }
@@ -615,8 +615,8 @@ fn component(
             return quote! {{
                 #local_clones
                 let state = ::std::rc::Rc::new(state);
-                let __rf_supplied = #supplied;
-                __rf_supplied.with(|| <#ty as ::fusor::dom::Component>::prepare(__rf_parent, move |owner| {
+                let __fusor_supplied = #supplied;
+                __fusor_supplied.with(|| <#ty as ::fusor::dom::Component>::prepare(__fusor_parent, move |owner| {
                     type __FusorInputs = <#ty as ::fusor::dom::FromInputs>::Inputs;
                     <#ty as ::fusor::dom::FromInputs>::from_inputs(__FusorInputs { #(#fields),* }, owner)
                 }))
@@ -674,7 +674,7 @@ fn component(
         }
         Binding::Field { node, value } => {
             let node = element(*node);
-            Some(quote_spanned! {value.span()=> ::fusor_std::forms::browser::adopt(&__rf_scope, &#node, &(#value))?; })
+            Some(quote_spanned! {value.span()=> ::fusor_std::forms::browser::adopt(&__fusor_scope, &#node, &(#value))?; })
         }
         _ => None,
     });
@@ -696,17 +696,17 @@ fn component(
         format_ident!("prepare_with_points")
     };
     let mount = if bundle.is_some() {
-        quote! { __RF_TEMPLATE.prepare_with_binding_bundle({ #template_html }, parent)? }
+        quote! { __FUSOR_TEMPLATE.prepare_with_binding_bundle({ #template_html }, parent)? }
     } else {
-        quote! { __RF_TEMPLATE.#mount_method({ #template_html }, __RF_MOUNTS, parent)? }
+        quote! { __FUSOR_TEMPLATE.#mount_method({ #template_html }, __FUSOR_MOUNTS, parent)? }
     };
     let install = quote! {
         #typed_handles
-        if __rf_scope.is_hydrating() { #(#adoptions)* }
+        if __fusor_scope.is_hydrating() { #(#adoptions)* }
         #(#shared_bindings)*
-        if __rf_scope.is_coherent() {
-            __rf_scope.set_coherent_renderer(move |__rf_frame| {
-                let __rf_attempt = __rf_frame.attempt;
+        if __fusor_scope.is_coherent() {
+            __fusor_scope.set_coherent_renderer(move |__fusor_frame| {
+                let __fusor_attempt = __fusor_frame.attempt;
                 #(#coherent_bindings)*
                 ::std::result::Result::Ok(())
             });
@@ -716,7 +716,7 @@ fn component(
     };
     let install = if let Some(bindings) = bundle {
         quote! {
-            if let ::std::option::Option::Some(__rf_bundle) = __rf_nodes.take_binding_bundle() {
+            if let ::std::option::Option::Some(__fusor_bundle) = __fusor_nodes.take_binding_bundle() {
                 #(#bindings)*
             } else {
                 #install
@@ -726,14 +726,14 @@ fn component(
         install
     };
     let incoming = if component.capture.is_none() && !component.inline {
-        quote! { let __rf_children = ::fusor::dom::Children::take(); }
+        quote! { let __fusor_children = ::fusor::dom::Children::take(); }
     } else {
-        quote! { let __rf_children = __rf_children.clone(); }
+        quote! { let __fusor_children = __fusor_children.clone(); }
     };
     let capture_ready = has_ready.then(|| quote! { let ready = ::std::rc::Rc::clone(&ready); });
     let javascript_inputs = component.javascript.as_ref().map(|_| {
         quote! {
-            let __rf_js_inputs = {
+            let __fusor_js_inputs = {
                 use ::fusor::js::MaybeInputs as _;
                 ::fusor::js::InputSource(&*state).inputs()
             };
@@ -741,24 +741,24 @@ fn component(
     });
     let javascript = component.javascript.as_ref().map(|module| {
         let id = &module.id;
-        quote! { ::fusor::js::mount(&mut __rf_scope, #id, __rf_js_inputs)?; }
+        quote! { ::fusor::js::mount(&mut __fusor_scope, #id, __fusor_js_inputs)?; }
     });
     let prepare = quote! {
                 #local_clones
                 #capture_ready
                 #incoming
-                let __rf_mount_guard = ::fusor::dom::MountGuard::enter()?;
+                let __fusor_mount_guard = ::fusor::dom::MountGuard::enter()?;
                 #declarations
-                let (mut __rf_scope, mut __rf_nodes) = #mount;
-                let state = if __rf_scope.prepares_effects() {
-                    ::fusor::coherence::prepare_state(__rf_scope.owner(), make)?
-                } else { make(__rf_scope.owner())? };
-                let state = __rf_scope.retain_state(state);
+                let (mut __fusor_scope, mut __fusor_nodes) = #mount;
+                let state = if __fusor_scope.prepares_effects() {
+                    ::fusor::coherence::prepare_state(__fusor_scope.owner(), make)?
+                } else { make(__fusor_scope.owner())? };
+                let state = __fusor_scope.retain_state(state);
                 #expose_capture
                 #javascript_inputs
                 #install
                 #javascript
-                ::std::result::Result::Ok(__rf_scope)
+                ::std::result::Result::Ok(__fusor_scope)
     };
     if let Some(expression) = &component.app {
         return quote_spanned! {expression.span()=>
@@ -778,14 +778,14 @@ fn component(
     }
     if component.capture.is_some() {
         return quote! {{
-            let parent = ::std::option::Option::Some(__rf_parent);
+            let parent = ::std::option::Option::Some(__fusor_parent);
             let make = move |_owner| ::std::result::Result::<_, ::fusor::dom::JsValue>::Ok(state);
             #prepare
         }};
     }
     if component.inline {
         return quote! {{
-            let parent = ::std::option::Option::Some(__rf_parent);
+            let parent = ::std::option::Option::Some(__fusor_parent);
             let make = move |_owner| ::std::result::Result::<_, ::fusor::dom::JsValue>::Ok(state);
             #prepare
         }};
@@ -852,17 +852,17 @@ fn coherent_binding(
             let selection = super::control::selection(value, cases, snapshots);
             let factories =
                 branch_factories(cases, snapshots, components, delivery_metadata, has_ready);
-            quote_spanned! {span=> __rf_frame.branch_at(#slot, &#point, || { #selection },
-            |__rf_case, __rf_data, __rf_parent| {
+            quote_spanned! {span=> __fusor_frame.branch_at(#slot, &#point, || { #selection },
+            |__fusor_case, __fusor_data, __fusor_parent| {
                 let state = ::std::rc::Rc::clone(&state);
-                match __rf_case { #factories _ => unreachable!("generated branch index") }
+                match __fusor_case { #factories _ => unreachable!("generated branch index") }
             })?; }
         }
 
         Binding::Children { point: id, .. } => {
             let slot = id.index();
             let point = point(*id);
-            quote! { __rf_frame.children_at(#slot, &#point, &__rf_children)?; }
+            quote! { __fusor_frame.children_at(#slot, &#point, &__fusor_children)?; }
         }
         Binding::ForEach {
             node,
@@ -878,8 +878,8 @@ fn coherent_binding(
                 quote! { ::fusor_components::ForEach::row }
             };
             let row = component(&components[*body], delivery_metadata, components, has_ready);
-            quote_spanned! {span=> __rf_frame.keyed(#slot, #node.as_ref(), || ::fusor_components::ForEach::entries({ #items }),
-            |entry| ::fusor_components::ForEach::key(entry, #key), |entry, __rf_parent| {
+            quote_spanned! {span=> __fusor_frame.keyed(#slot, #node.as_ref(), || ::fusor_components::ForEach::entries({ #items }),
+            |entry| ::fusor_components::ForEach::key(entry, #key), |entry, __fusor_parent| {
                 let state = #row_constructor(::std::rc::Rc::clone(&state), entry);
                 #row
             })?; }
@@ -921,30 +921,30 @@ fn coherent_binding(
                 )
             });
             quote_spanned! {span=>
-                if let ::fusor_async::AsyncRead::Ready(#resolved) = (#value).read(__rf_attempt)? {
+                if let ::fusor_async::AsyncRead::Ready(#resolved) = (#value).read(__fusor_attempt)? {
                     #(#bindings)*
                 }
             }
         }
         Binding::Region { .. } => {
-            quote_spanned! {span=> __rf_frame.reject("nested coherent boundaries are unsupported")?; }
+            quote_spanned! {span=> __fusor_frame.reject("nested coherent boundaries are unsupported")?; }
         }
         Binding::Text { slot, value } => {
             let node = text(*slot);
-            quote_spanned! {span=> __rf_frame.text(&#node, &(#value))?; }
+            quote_spanned! {span=> __fusor_frame.text(&#node, &(#value))?; }
         }
         Binding::Attribute { node, name, value } => {
             let node = element(*node);
             let value = string(value);
-            quote_spanned! {span=> __rf_frame.attr(#node.as_ref(), #name, ::std::option::Option::Some(#value))?; }
+            quote_spanned! {span=> __fusor_frame.attr(#node.as_ref(), #name, ::std::option::Option::Some(#value))?; }
         }
         Binding::Boolean { node, name, value } => {
             let node = element(*node);
-            quote_spanned! {span=> __rf_frame.attr(#node.as_ref(), #name, ({ #value }).then(::std::string::String::new))?; }
+            quote_spanned! {span=> __fusor_frame.attr(#node.as_ref(), #name, ({ #value }).then(::std::string::String::new))?; }
         }
         Binding::Class { node, name, value } => {
             let node = element(*node);
-            quote_spanned! {span=> __rf_frame.class(#node.as_ref(), #name, { #value })?; }
+            quote_spanned! {span=> __fusor_frame.class(#node.as_ref(), #name, { #value })?; }
         }
         Binding::Event {
             node,
@@ -958,7 +958,7 @@ fn coherent_binding(
                 #locals
                 let state = ::std::rc::Rc::clone(&state);
                 #ready
-                __rf_frame.on(#node.as_ref(), #name, move |event| { #handler })?;
+                __fusor_frame.on(#node.as_ref(), #name, move |event| { #handler })?;
             }}
         }
         Binding::Router { .. }
@@ -969,7 +969,7 @@ fn coherent_binding(
         | Binding::Input { .. }
         | Binding::Field { .. }
         | Binding::Slot { .. } => {
-            quote_spanned! {span=> __rf_frame.reject("editable controls, widgets, outlets and opaque content must remain outside coherent regions")?; }
+            quote_spanned! {span=> __fusor_frame.reject("editable controls, widgets, outlets and opaque content must remain outside coherent regions")?; }
         }
     }
 }

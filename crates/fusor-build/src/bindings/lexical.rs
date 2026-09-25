@@ -24,7 +24,7 @@ pub(super) fn rewrite(component: &mut Component) {
         );
         let depth = component.locals.len();
         let contexts: Vec<_> = (0..depth)
-            .map(|i| quote::format_ident!("__rf_context_{i}"))
+            .map(|i| quote::format_ident!("__fusor_context_{i}"))
             .collect();
         let first = &contexts[0];
         aliases.push(quote! { let #first = &state; });

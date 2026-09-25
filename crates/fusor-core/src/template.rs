@@ -5,18 +5,18 @@
 
 use std::{fmt, str::FromStr};
 
-pub const VERSION: u32 = 2;
-pub const VERSION_ATTRIBUTE: &str = "data-rf-version";
-pub const COMPONENT_ATTRIBUTE: &str = "data-rf-component";
-pub const ELEMENT_ATTRIBUTE: &str = "data-rf-node";
+pub const VERSION: u32 = 3;
+pub const VERSION_ATTRIBUTE: &str = "data-fusor-version";
+pub const COMPONENT_ATTRIBUTE: &str = "data-fusor-component";
+pub const ELEMENT_ATTRIBUTE: &str = "data-fusor-node";
 /// An element whose only child is a compiler-owned dynamic Text node.
-pub const TEXT_ELEMENT_ATTRIBUTE: &str = "data-rf-text";
+pub const TEXT_ELEMENT_ATTRIBUTE: &str = "data-fusor-text";
 /// Child regions controlled by components, lists, slots, or external widgets.
-pub const MANAGED_ATTRIBUTE: &str = "data-rf-managed";
+pub const MANAGED_ATTRIBUTE: &str = "data-fusor-managed";
 /// A subtree whose contents belong to an external integration.
-pub const EXTERNAL_ATTRIBUTE: &str = "data-rf-external";
+pub const EXTERNAL_ATTRIBUTE: &str = "data-fusor-external";
 /// Runtime component roots, including clones of a declared HTML template.
-pub const INSTANCE_ATTRIBUTE: &str = "data-rf-instance";
+pub const INSTANCE_ATTRIBUTE: &str = "data-fusor-instance";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InvalidId;
@@ -81,9 +81,9 @@ pub enum MountMarker {
 
 impl MountMarker {
     pub fn parse(value: &str) -> Result<Option<Self>, InvalidId> {
-        if let Some(id) = value.strip_prefix("rf:mount:") {
+        if let Some(id) = value.strip_prefix("fusor:mount:") {
             id.parse().map(|id| Some(Self::Start(id)))
-        } else if let Some(id) = value.strip_prefix("/rf:mount:") {
+        } else if let Some(id) = value.strip_prefix("/fusor:mount:") {
             id.parse().map(|id| Some(Self::End(id)))
         } else {
             Ok(None)
@@ -94,8 +94,8 @@ impl MountMarker {
 impl fmt::Display for MountMarker {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Start(id) => write!(f, "rf:mount:{id}"),
-            Self::End(id) => write!(f, "/rf:mount:{id}"),
+            Self::Start(id) => write!(f, "fusor:mount:{id}"),
+            Self::End(id) => write!(f, "/fusor:mount:{id}"),
         }
     }
 }
@@ -109,9 +109,9 @@ pub enum TextMarker {
 impl TextMarker {
     /// Ordinary HTML comments are not part of this protocol.
     pub fn parse(value: &str) -> Result<Option<Self>, InvalidId> {
-        if let Some(id) = value.strip_prefix("rf:") {
+        if let Some(id) = value.strip_prefix("fusor:") {
             id.parse().map(|id| Some(Self::Start(id)))
-        } else if let Some(id) = value.strip_prefix("/rf:") {
+        } else if let Some(id) = value.strip_prefix("/fusor:") {
             id.parse().map(|id| Some(Self::End(id)))
         } else {
             Ok(None)
@@ -122,18 +122,22 @@ impl TextMarker {
 impl fmt::Display for TextMarker {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Start(id) => write!(f, "rf:{id}"),
-            Self::End(id) => write!(f, "/rf:{id}"),
+            Self::Start(id) => write!(f, "fusor:{id}"),
+            Self::End(id) => write!(f, "/fusor:{id}"),
         }
     }
 }
 
+/// Authors mark router links with this; every other `data-fusor-*` name belongs
+/// to the compiler and runtime.
+pub const LINK_ATTRIBUTE: &str = "data-fusor-link";
+
 pub fn reserved_attribute(name: &str) -> bool {
-    name.starts_with("data-rf-")
+    name.starts_with("data-fusor-") && name != LINK_ATTRIBUTE
 }
 
 pub fn reserved_comment(value: &str) -> bool {
-    value.starts_with("rf:") || value.starts_with("/rf:")
+    value.starts_with("fusor:") || value.starts_with("/fusor:")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

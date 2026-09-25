@@ -4,7 +4,7 @@ const VERSION = 1;
 const schedulerDefaults = Object.freeze({ rootMargin: '0px', idleTimeout: 2000 });
 const activationPolicies = new Set(['load', 'visible', 'idle', 'interaction', 'manual']);
 const prefetchPolicies = new Set(['none', 'load', 'visible', 'idle']);
-const metadataNames = ['id', 'data-rf-island', 'data-rf-unit', 'data-rf-generation', 'data-rf-schema', 'data-rf-hash', 'data-rf-activate', 'data-rf-prefetch'];
+const metadataNames = ['id', 'data-fusor-island', 'data-fusor-unit', 'data-fusor-generation', 'data-fusor-schema', 'data-fusor-hash', 'data-fusor-activate', 'data-fusor-prefetch'];
 
 function failure(code, message, cause) {
   return Object.assign(new Error(message, cause ? { cause } : undefined), { code });
@@ -48,15 +48,15 @@ export function install(manifest, { root = document } = {}) {
   function state(instance, next, error = null) {
     if (instance.state === 'disposed') return;
     instance.state = next; instance.error = error;
-    instance.host.setAttribute('data-rf-status', next);
-    if (error) instance.host.setAttribute('data-rf-error', error.code || 'load-failed');
-    else instance.host.removeAttribute('data-rf-error');
+    instance.host.setAttribute('data-fusor-status', next);
+    if (error) instance.host.setAttribute('data-fusor-error', error.code || 'load-failed');
+    else instance.host.removeAttribute('data-fusor-error');
     instance.host.dispatchEvent(new CustomEvent('fusor:island-status', { detail: { id: instance.id, status: next, error }, bubbles: true }));
   }
   function valid(instance) {
     return instances.get(instance.token) === instance && instance.host.isConnected
       && metadataNames.every(name => instance.host.getAttribute(name) === instance.metadata[name])
-      && instance.propsNode.parentElement === instance.host && instance.propsNode.matches('script[type="application/json"][data-rf-props]') && instance.propsNode.textContent === instance.props;
+      && instance.propsNode.parentElement === instance.host && instance.propsNode.matches('script[type="application/json"][data-fusor-props]') && instance.propsNode.textContent === instance.props;
   }
   function target(token) {
     const instance = instances.get(token);
@@ -127,9 +127,9 @@ export function install(manifest, { root = document } = {}) {
     unit.state = 'initializing';
     unit.initialization = (async () => {
       const module = await import(unit.definition.javascript);
-      if (typeof module.default !== 'function' || typeof module.__rf_manifest !== 'function' || typeof module.__rf_activate !== 'function' || typeof module.__rf_dispose !== 'function') throw failure('load-failed', 'A delivery unit is missing its typed entry exports.');
+      if (typeof module.default !== 'function' || typeof module.__fusor_manifest !== 'function' || typeof module.__fusor_activate !== 'function' || typeof module.__fusor_dispose !== 'function') throw failure('load-failed', 'A delivery unit is missing its typed entry exports.');
       await module.default({ module_or_path: bytes });
-      const witness = JSON.parse(module.__rf_manifest());
+      const witness = JSON.parse(module.__fusor_manifest());
       const fields = ['unit', 'descriptor', 'props_schema', 'template_hash', 'mode'];
       if (witness.version !== VERSION || !Array.isArray(witness.entries) || witness.entries.length !== unit.definition.entries.length
         || unit.definition.entries.some(expected => !witness.entries.some(actual => fields.every(field => actual[field] === expected[field])))) throw failure('descriptor-mismatch', 'Loaded Wasm registrations differ from this page’s immutable manifest.');
@@ -181,16 +181,16 @@ export function install(manifest, { root = document } = {}) {
       try {
         // No await between inspecting the native DOM and synchronous Rust bind.
         // Generated Rust adopts live control values before its binding effects.
-        const binding = module.__rf_activate(instance.entry.descriptor, instance.host, instance.props, bindingToken);
+        const binding = module.__fusor_activate(instance.entry.descriptor, instance.host, instance.props, bindingToken);
         // Preview mode waits for its first coherent publication. Attach mode
         // has already adopted native state synchronously before this await.
         await binding;
       } catch (error) {
-        module.__rf_dispose(bindingToken);
+        module.__fusor_dispose(bindingToken);
         throw failure('binding-failed', 'The island could not attach to its initial HTML.', error);
       }
       if (!valid(instance) || instance.operation !== generation || !wantsActivation(instance)) {
-        module.__rf_dispose(bindingToken); throw cancelled();
+        module.__fusor_dispose(bindingToken); throw cancelled();
       }
       state(instance, 'active');
     })().catch(error => {
@@ -223,7 +223,7 @@ export function install(manifest, { root = document } = {}) {
       if (kind === 'activate' && !wantsActivation(instance) && ['requested', 'binding'].includes(instance.state)) {
         ++instance.operation; instance.work = null;
         for (const cancel of [...instance.compositionWaiters]) cancel();
-        if (instance.bindingToken) instance.unit.module?.__rf_dispose(instance.bindingToken);
+        if (instance.bindingToken) instance.unit.module?.__fusor_dispose(instance.bindingToken);
         instance.bindingToken = null;
         state(instance, 'dormant');
       }
@@ -264,15 +264,15 @@ export function install(manifest, { root = document } = {}) {
 
   function register(host) {
     if (elements.has(host)) return;
-    if (host.parentElement?.closest('[data-rf-island]')) throw failure('nested-island', 'Nested independent islands are unsupported.');
+    if (host.parentElement?.closest('[data-fusor-island]')) throw failure('nested-island', 'Nested independent islands are unsupported.');
     const metadata = Object.fromEntries(metadataNames.map(name => [name, host.getAttribute(name)]));
-    const id = metadata.id, unit = units.get(metadata['data-rf-unit']);
-    const entry = unit?.definition.entries.find(entry => entry.descriptor === metadata['data-rf-island']);
+    const id = metadata.id, unit = units.get(metadata['data-fusor-unit']);
+    const entry = unit?.definition.entries.find(entry => entry.descriptor === metadata['data-fusor-island']);
     if (!id || ids.has(id) || document.getElementById(id) !== host || document.querySelectorAll(`[id="${CSS.escape(id)}"]`).length !== 1) throw failure('duplicate-instance', 'Island IDs must be unique in the document.');
-    if (!entry || metadata['data-rf-generation'] !== generation || entry.props_schema !== metadata['data-rf-schema'] || entry.template_hash !== metadata['data-rf-hash']) throw failure('descriptor-mismatch', `Island ${id} does not match this page’s generation.`);
-    const policy = metadata['data-rf-activate'] || 'load', prefetch = metadata['data-rf-prefetch'] || 'none';
+    if (!entry || metadata['data-fusor-generation'] !== generation || entry.props_schema !== metadata['data-fusor-schema'] || entry.template_hash !== metadata['data-fusor-hash']) throw failure('descriptor-mismatch', `Island ${id} does not match this page’s generation.`);
+    const policy = metadata['data-fusor-activate'] || 'load', prefetch = metadata['data-fusor-prefetch'] || 'none';
     if (!activationPolicies.has(policy) || !prefetchPolicies.has(prefetch)) throw failure('protocol-mismatch', 'Unsupported island scheduling policy.');
-    const propsNodes = [...host.children].filter(node => node.matches('script[type="application/json"][data-rf-props]'));
+    const propsNodes = [...host.children].filter(node => node.matches('script[type="application/json"][data-fusor-props]'));
     if (propsNodes.length !== 1) throw failure('descriptor-mismatch', 'An island needs one inert props payload.');
     const token = `island-${++sequence}`;
     const instance = { id, token, host, entry, unit, metadata, propsNode: propsNodes[0], props: propsNodes[0].textContent, state: 'dormant', bindingToken: null, operation: 0, error: null, work: null, claims: new Set(), triggers: new Set(), compositionWaiters: new Set() };
@@ -281,10 +281,10 @@ export function install(manifest, { root = document } = {}) {
     schedule(instance, prefetch, 'prefetch'); schedule(instance, policy, 'activate');
   }
   function discover(node) {
-    const hosts = [...(node.matches?.('[data-rf-island]') ? [node] : []), ...node.querySelectorAll?.('[data-rf-island]') || []];
+    const hosts = [...(node.matches?.('[data-fusor-island]') ? [node] : []), ...node.querySelectorAll?.('[data-fusor-island]') || []];
     for (const host of hosts) {
       try { register(host); }
-      catch (error) { host.setAttribute('data-rf-error', error.code || 'protocol-mismatch'); console.error(error); }
+      catch (error) { host.setAttribute('data-fusor-error', error.code || 'protocol-mismatch'); console.error(error); }
     }
   }
   function dispose(instance) {
@@ -295,16 +295,16 @@ export function install(manifest, { root = document } = {}) {
     for (const cancel of instance.triggers) cancel(); instance.triggers.clear();
     for (const cancel of [...instance.compositionWaiters]) cancel();
     for (const claim of [...instance.claims]) claim.cancel();
-    if (instance.bindingToken) instance.unit.module?.__rf_dispose(instance.bindingToken);
+    if (instance.bindingToken) instance.unit.module?.__fusor_dispose(instance.bindingToken);
     instance.bindingToken = null;
     if (!elements.has(instance.host)) state(instance, 'disposed');
     instance.work = null; instance.props = ''; instance.error = null;
   }
   const onClick = event => {
-    const button = event.target.closest?.('button[data-rf-activate-target]');
+    const button = event.target.closest?.('button[data-fusor-activate-target]');
     if (!button || button.disabled) return;
-    const instance = ids.get(button.getAttribute('data-rf-activate-target'));
-    if (!instance || instance.metadata['data-rf-activate'] !== 'interaction') return;
+    const instance = ids.get(button.getAttribute('data-fusor-activate-target'));
+    if (!instance || instance.metadata['data-fusor-activate'] !== 'interaction') return;
     event.preventDefault();
     // Another deliberate click is an explicit retry; automatic policies never loop.
     try { request(instance.token, instance.state === 'failed' ? 'retry' : 'activate').promise.catch(error => { if (error.code !== 'cancelled') console.error(error); }); }
@@ -351,7 +351,7 @@ export function install(manifest, { root = document } = {}) {
     document.addEventListener('compositionstart', onCompositionStart, true);
     document.addEventListener('compositionend', onCompositionEnd, true);
     document.addEventListener('click', onClick);
-    observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: [...metadataNames, 'type', 'data-rf-props'] });
+    observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: [...metadataNames, 'type', 'data-fusor-props'] });
     globalThis.__fusor_islands = api;
     discover(root);
     return api;

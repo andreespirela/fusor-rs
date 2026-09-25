@@ -33,7 +33,7 @@ fn foreach_items_key_and_component_input_keep_html_origins() {
         assert!(origin.column >= 5);
     }
     // Type errors in generated call scaffolding still identify the owning binding.
-    let setup = find_identifier(page.rust.parse().unwrap(), "__rf_key_state").unwrap();
+    let setup = find_identifier(page.rust.parse().unwrap(), "__fusor_key_state").unwrap();
     assert_eq!(map.lookup(setup).unwrap().line, 3);
     let serialized = map.to_string();
     assert_eq!(serialized.parse::<SourceMap>().unwrap(), map);

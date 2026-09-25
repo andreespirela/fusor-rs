@@ -194,7 +194,10 @@ pub(super) fn lower(
                     "hydrate:target requires an explicit instance ID on a native type=button button",
                 ));
             }
-            rendered.push_str(&format!(" data-rf-activate-target=\"{}\"", escape(value)));
+            rendered.push_str(&format!(
+                " data-fusor-activate-target=\"{}\"",
+                escape(value)
+            ));
             changed = true;
             continue;
         }

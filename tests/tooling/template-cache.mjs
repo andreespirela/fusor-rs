@@ -10,7 +10,7 @@ import { chromium, firefox, webkit } from "playwright";
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
 const exec = promisify(execFile),
   root = process.cwd(),
-  scratch = await mkdtemp(join(tmpdir(), "rf-template-cache-"));
+  scratch = await mkdtemp(join(tmpdir(), "fusor-template-cache-"));
 let browser, server;
 try {
   await mkdir(join(scratch, "src"));
@@ -199,6 +199,7 @@ struct Example {value:Signal<u32>,text:Signal<String>}
         app.unmount();
         let template = document.querySelector("#fixture");
         const original = template.innerHTML;
+        const version = template.getAttribute("data-fusor-version");
         template.content.querySelector("#card").firstChild.data = "updated ";
         app.mount();
         mounts++;
@@ -223,7 +224,7 @@ struct Example {value:Signal<u32>,text:Signal<String>}
         ]) {
           let extra;
           const button = template.content.querySelector("button");
-          if (damage === "direct-marker") template.content.querySelector("#nested-a").setAttribute("data-rf-text", "01");
+          if (damage === "direct-marker") template.content.querySelector("#nested-a").setAttribute("data-fusor-text", "01");
           if (damage === "direct-children") template.content.querySelector("#nested-a").append(document.createTextNode("a"), document.createTextNode("b"));
           if (damage === "direct-comment") template.content.querySelector("#nested-a").append(document.createComment("unowned"));
           if (damage === "namespace") {
@@ -240,12 +241,12 @@ struct Example {value:Signal<u32>,text:Signal<String>}
               template.content,
               NodeFilter.SHOW_COMMENT,
             );
-            w.nextNode().data = "rf:01";
+            w.nextNode().data = "fusor:01";
           }
-          if (damage === "missing") button.removeAttribute("data-rf-node");
+          if (damage === "missing") button.removeAttribute("data-fusor-node");
           if (damage === "duplicate") button.after(button.cloneNode(true));
           if (damage === "schema")
-            template.setAttribute("data-rf-version", "999");
+            template.setAttribute("data-fusor-version", "999");
           if (damage === "duplicate-root") {
             extra = template.cloneNode(true);
             template.after(extra);
@@ -261,7 +262,7 @@ struct Example {value:Signal<u32>,text:Signal<String>}
           if (document.querySelector("#card"))
             throw Error("failed mount published a root");
           extra?.remove();
-          template.setAttribute("data-rf-version", "2");
+          template.setAttribute("data-fusor-version", version);
           template.innerHTML = original;
         }
         const replacement = template.cloneNode(true);
@@ -274,9 +275,9 @@ struct Example {value:Signal<u32>,text:Signal<String>}
         if (constructed !== mounts)
           throw Error("cache retained or constructed application state");
         const manual = document.createElement("template");
-        manual.setAttribute("data-rf-component", "9001");
-        manual.setAttribute("data-rf-version", "2");
-        manual.innerHTML = '<div data-rf-node="0"></div>';
+        manual.setAttribute("data-fusor-component", "9001");
+        manual.setAttribute("data-fusor-version", version);
+        manual.innerHTML = '<div data-fusor-node="0"></div>';
         document.body.append(manual);
         app.descriptor(9001, false);
         app.descriptor(9001, false);
@@ -289,10 +290,10 @@ struct Example {value:Signal<u32>,text:Signal<String>}
         if (!bad) throw Error("descriptor slice semantics ignored");
         // More than32 distinct descriptors must evict old certificates.
         for (let id = 9002; id < 9035; id++) {
-          manual.setAttribute("data-rf-component", String(id));
+          manual.setAttribute("data-fusor-component", String(id));
           app.descriptor(id, false);
         }
-        manual.setAttribute("data-rf-component", "9001");
+        manual.setAttribute("data-fusor-component", "9001");
         const before = imports;
         app.descriptor(9001, false);
         if (imports !== before + 1)
@@ -403,13 +404,13 @@ struct Example {value:Signal<u32>,text:Signal<String>}
       try {
         const { patchDocument } = await import(url);
         const parse = html => new DOMParser().parseFromString(html, 'text/html');
-        const before = parse('<output data-rf-node="0" data-rf-text="1" class="before"></output>');
-        const after = parse('<output data-rf-node="0" data-rf-text="1" class="after"></output>');
+        const before = parse('<output data-fusor-node="0" data-fusor-text="1" class="before"></output>');
+        const after = parse('<output data-fusor-node="0" data-fusor-text="1" class="after"></output>');
         const live = before.cloneNode(true), host = live.querySelector('output');
         const text = live.createTextNode('reactive value'); host.append(text);
         patchDocument(before, after, live);
         if (host.className !== 'after' || host.firstChild !== text || text.data !== 'reactive value') throw Error('refresh lost direct text identity/value');
-        const changed = parse('<output data-rf-node="0" data-rf-text="1" class="third">static</output>');
+        const changed = parse('<output data-fusor-node="0" data-fusor-text="1" class="third">static</output>');
         let rejected = false;
         try { patchDocument(after, changed, live); } catch { rejected = true; }
         if (!rejected || host.className !== 'after' || host.firstChild !== text) throw Error('refresh accepted a structural change or partially applied it');

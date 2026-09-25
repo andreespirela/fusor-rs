@@ -276,7 +276,7 @@ test("compiled bindings retain native nodes after their lookup metadata is remov
     const query = Element.prototype.querySelector;
     const matches = Element.prototype.matches;
     const rejectBindingSelector = (selector) => {
-      if (/data-rf-(node|text)/.test(selector)) throw new Error("a compiled binding used a CSS selector");
+      if (/data-fusor-(node|text)/.test(selector)) throw new Error("a compiled binding used a CSS selector");
     };
     Element.prototype.querySelector = function (selector) {
       rejectBindingSelector(selector);
@@ -292,12 +292,12 @@ test("compiled bindings retain native nodes after their lookup metadata is remov
       Element.prototype.querySelector = query;
       Element.prototype.matches = matches;
     }
-    for (const node of document.querySelectorAll("[data-rf-node]")) node.removeAttribute("data-rf-node");
-    for (const node of document.querySelectorAll("[data-rf-text]")) node.removeAttribute("data-rf-text");
+    for (const node of document.querySelectorAll("[data-fusor-node]")) node.removeAttribute("data-fusor-node");
+    for (const node of document.querySelectorAll("[data-fusor-text]")) node.removeAttribute("data-fusor-text");
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_COMMENT);
     const anchors = [];
     while (walker.nextNode()) {
-      if (/^\/?rf:/.test(walker.currentNode.data)) anchors.push(walker.currentNode);
+      if (/^\/?fusor:/.test(walker.currentNode.data)) anchors.push(walker.currentNode);
     }
     for (const anchor of anchors) anchor.remove();
     window.nativeCount = document.querySelector("#count").firstChild;
@@ -327,17 +327,17 @@ for (const damage of [
       const output = root.querySelector("#count"), text = output.firstChild;
       if (text?.nodeType !== Node.TEXT_NODE || output.childNodes.length !== 1)
         throw Error("fixture did not compile to a sole text child");
-      const id = output.getAttribute("data-rf-text");
+      const id = output.getAttribute("data-fusor-text");
       if (id === null) throw Error("missing direct text marker");
       switch (damage) {
-        case "missing marker": output.removeAttribute("data-rf-text"); break;
-        case "noncanonical marker": output.setAttribute("data-rf-text", `0${id}`); break;
-        case "unknown marker": output.setAttribute("data-rf-text", "999999"); break;
-        case "duplicate marker": root.querySelector("#parity").setAttribute("data-rf-text", id); break;
+        case "missing marker": output.removeAttribute("data-fusor-text"); break;
+        case "noncanonical marker": output.setAttribute("data-fusor-text", `0${id}`); break;
+        case "unknown marker": output.setAttribute("data-fusor-text", "999999"); break;
+        case "duplicate marker": root.querySelector("#parity").setAttribute("data-fusor-text", id); break;
         case "extra text": output.append(document.createTextNode("extra")); break;
         case "element child": output.append(document.createElement("b")); break;
         case "comment child": output.append(document.createComment("ordinary comment")); break;
-        case "old schema": root.setAttribute("data-rf-version", "1"); break;
+        case "old schema": root.setAttribute("data-fusor-version", "1"); break;
       }
       let error = "mount unexpectedly succeeded";
       try { app.mount(); } catch (problem) { error = String(problem); }
@@ -375,12 +375,12 @@ for (const [damage, expected] of [
       const backup = root.cloneNode(true);
       // Mixed content retains anchors even when sole-child text is specialized.
       const note = root.querySelector("#counter-note");
-      const start = [...note.childNodes].find(node => node.nodeType === Node.COMMENT_NODE && /^rf:\d+$/.test(node.data));
+      const start = [...note.childNodes].find(node => node.nodeType === Node.COMMENT_NODE && /^fusor:\d+$/.test(node.data));
       if (!start) throw Error("missing mixed-content test anchor");
       let duplicate;
       switch (damage) {
-        case "version": root.setAttribute("data-rf-version", "999"); break;
-        case "missing element": root.querySelector("#step").removeAttribute("data-rf-node"); break;
+        case "version": root.setAttribute("data-fusor-version", "999"); break;
+        case "missing element": root.querySelector("#step").removeAttribute("data-fusor-node"); break;
         case "duplicate element": root.append(root.querySelector("#increment").cloneNode(true)); break;
         case "wrong element type": {
           const input = root.querySelector("#step");
@@ -392,7 +392,7 @@ for (const [damage, expected] of [
         case "missing text anchor": start.remove(); break;
         case "duplicate text anchor": note.append(start.cloneNode()); break;
         case "unexpected text content": start.after(document.createElement("span")); break;
-        case "invalid identifier": root.querySelector("#step").setAttribute("data-rf-node", "01"); break;
+        case "invalid identifier": root.querySelector("#step").setAttribute("data-fusor-node", "01"); break;
         case "duplicate component": duplicate = root.cloneNode(true); root.after(duplicate); break;
       }
       let error = "mount unexpectedly succeeded";

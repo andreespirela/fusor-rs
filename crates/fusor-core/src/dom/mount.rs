@@ -313,8 +313,8 @@ impl TemplateDescriptor {
                 .end
                 .previous_sibling()
                 .ok_or_else(|| invalid("missing children end"))?;
-            if start.node_value().as_deref() != Some("rf:fragment")
-                || end.node_value().as_deref() != Some("/rf:fragment")
+            if start.node_value().as_deref() != Some("fusor:fragment")
+                || end.node_value().as_deref() != Some("/fusor:fragment")
             {
                 return Err(invalid("server children fragment mismatch"));
             }
@@ -338,8 +338,8 @@ impl TemplateDescriptor {
         let root = document.create_element("div")?;
         root.append_child(&template.content().clone_node_with_deep(true)?)?;
         let (mut scope, nodes) = self.resolve(mode.scope(root), mounts, mode.bundled())?;
-        let start: Node = document.create_comment("rf:fragment").into();
-        let end: Node = document.create_comment("/rf:fragment").into();
+        let start: Node = document.create_comment("fusor:fragment").into();
+        let end: Node = document.create_comment("/fusor:fragment").into();
         scope
             .root()
             .insert_before(&start, scope.root().first_child().as_ref())?;

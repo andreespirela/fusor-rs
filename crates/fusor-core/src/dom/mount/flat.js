@@ -1,5 +1,8 @@
 // A complete protocol scan for templates without managed regions or child mounts.
 // This never caches a live DOM node, skips validation, or installs behavior.
+const START = 'fusor:';
+const END = '/fusor:';
+
 export function flatPlan(elementIds, tags, textIds, textElements) {
   return {
     elements: new Map(elementIds.map((id, index) => [id, index])),
@@ -27,8 +30,8 @@ export function resolveFlat(plan, root) {
   let node = root;
   do {
     if (node.nodeType === 1) {
-      const id = node.getAttribute('data-rf-node');
-      const text = node.getAttribute('data-rf-text');
+      const id = node.getAttribute('data-fusor-node');
+      const text = node.getAttribute('data-fusor-text');
       if (text !== null) {
         const offset = plan.textHosts.get(text);
         if (offset === undefined) mismatch('unexpected text element');
@@ -51,10 +54,10 @@ export function resolveFlat(plan, root) {
     } else if (node.nodeType === 8) {
       const value = node.nodeValue;
       let id, end;
-      if (value.startsWith('rf:')) {
-        id = value.slice(3); end = false;
-      } else if (value.startsWith('/rf:')) {
-        id = value.slice(4); end = true;
+      if (value.startsWith(START)) {
+        id = value.slice(START.length); end = false;
+      } else if (value.startsWith(END)) {
+        id = value.slice(END.length); end = true;
       } else continue;
       const index = plan.texts.get(id);
       // Mount anchors are impossible in this descriptor too; unknown, malformed

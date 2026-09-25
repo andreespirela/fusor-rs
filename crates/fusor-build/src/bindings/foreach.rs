@@ -223,7 +223,7 @@ fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
                 let name = name.strip_prefix("r#").unwrap_or(&name);
                 // Raw names compare like ordinary identifiers. Conservatively
                 // avoid Unicode normalization and compiler-context escapes.
-                name.is_ascii() && name != index && !name.starts_with("__rf")
+                name.is_ascii() && name != index && !name.starts_with("__fusor")
             }
             // Opaque macros/attributes may introduce a use absent from tokens.
             // Rejecting unary ! and != too is an intentional false positive.

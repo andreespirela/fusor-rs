@@ -6,7 +6,6 @@ use std::{
 
 /// A problem with one file or directory of the application, shown as
 /// `path[:line:column]: message`.
-#[derive(Debug)]
 pub(crate) struct SourceError {
     path: PathBuf,
     location: Option<(usize, usize)>,
@@ -51,6 +50,13 @@ impl fmt::Display for SourceError {
             write!(formatter, ":{line}:{column}")?;
         }
         write!(formatter, ": {}", self.message)
+    }
+}
+
+// A build script's `main` reports errors with Debug; keep the readable location.
+impl fmt::Debug for SourceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, formatter)
     }
 }
 

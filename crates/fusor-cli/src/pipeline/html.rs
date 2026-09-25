@@ -19,7 +19,7 @@ pub(crate) fn render(
         ));
     }
     let marker = revision
-        .map(|revision| format!(" data-rf-revision=\"{revision}\""))
+        .map(|revision| format!(" data-fusor-revision=\"{revision}\""))
         .unwrap_or_default();
     let stylesheets = styles
         .iter()

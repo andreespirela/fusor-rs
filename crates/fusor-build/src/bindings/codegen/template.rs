@@ -53,9 +53,9 @@ pub(super) fn lower(component: &Component, has_ready: bool) -> TemplateCode {
         let name = element(node.id);
         let id = node.id.index();
         if node.tag == "input" {
-            quote! { let #name = __rf_nodes.take_input(::fusor::template::ElementId::new(#id))?; }
+            quote! { let #name = __fusor_nodes.take_input(::fusor::template::ElementId::new(#id))?; }
         } else {
-            quote! { let #name = __rf_nodes.take_element(::fusor::template::ElementId::new(#id))?; }
+            quote! { let #name = __fusor_nodes.take_element(::fusor::template::ElementId::new(#id))?; }
         }
     });
     let text_handles = component
@@ -65,7 +65,7 @@ pub(super) fn lower(component: &Component, has_ready: bool) -> TemplateCode {
         .map(|id| {
             let name = text(*id);
             let id = id.index();
-            quote! { let #name = __rf_nodes.take_text(::fusor::template::TextId::new(#id))?; }
+            quote! { let #name = __fusor_nodes.take_text(::fusor::template::TextId::new(#id))?; }
         });
     fn mount_points(bindings: &[Binding], mounts: &mut Vec<MountId>) {
         for binding in bindings {
@@ -88,11 +88,11 @@ pub(super) fn lower(component: &Component, has_ready: bool) -> TemplateCode {
     let mount_handles = mounts.iter().map(|id| {
         let name = point(*id);
         let id = id.index();
-        quote! { let #name = __rf_nodes.take_mount_point(::fusor::template::MountId::new(#id))?; }
+        quote! { let #name = __fusor_nodes.take_mount_point(::fusor::template::MountId::new(#id))?; }
     });
     TemplateCode {
         declarations: quote! {
-            const __RF_TEMPLATE: ::fusor::template::TemplateDescriptor = ::fusor::template::TemplateDescriptor {
+            const __FUSOR_TEMPLATE: ::fusor::template::TemplateDescriptor = ::fusor::template::TemplateDescriptor {
                 version: #version,
                 component: ::fusor::template::ComponentId::new(#id),
                 kind: #kind,
@@ -100,7 +100,7 @@ pub(super) fn lower(component: &Component, has_ready: bool) -> TemplateCode {
                 texts: &[#(#texts),*],
                 text_elements: &[#(#text_elements),*],
             };
-            const __RF_MOUNTS: &[::fusor::template::MountId] = &[#(#mount_ids),*];
+            const __FUSOR_MOUNTS: &[::fusor::template::MountId] = &[#(#mount_ids),*];
         },
         typed_handles: quote! {
             #(#handles)*
@@ -166,18 +166,18 @@ fn bundle_binding(
         Binding::Text { slot, value } => {
             let slot = texts[slot];
             if typed_text_eligible(value) {
-                quote_spanned! {span=> __rf_scope.bundle_text_value(&__rf_bundle, #slot, move || {
+                quote_spanned! {span=> __fusor_scope.bundle_text_value(&__fusor_bundle, #slot, move || {
                     use ::fusor::dom::text_value::Convert as _;
                     (&::fusor::dom::text_value::Value(&(#value))).__fusor_into_text()
                 })?; }
             } else {
-                quote_spanned! {span=> __rf_scope.bundle_text_string(&__rf_bundle, #slot, move || ::std::string::ToString::to_string(&(#value)))?; }
+                quote_spanned! {span=> __fusor_scope.bundle_text_string(&__fusor_bundle, #slot, move || ::std::string::ToString::to_string(&(#value)))?; }
             }
         }
         Binding::Attribute { node, name, value } => {
             let slot = elements[node];
             let value = string(value);
-            quote_spanned! {span=> __rf_scope.bundle_attr(&__rf_bundle, #slot, #name, move || ::std::option::Option::Some(#value))?; }
+            quote_spanned! {span=> __fusor_scope.bundle_attr(&__fusor_bundle, #slot, #name, move || ::std::option::Option::Some(#value))?; }
         }
         Binding::Event {
             node,
@@ -185,7 +185,7 @@ fn bundle_binding(
             handler,
         } => {
             let slot = elements[node];
-            quote_spanned! {span=> __rf_scope.bundle_on(&__rf_bundle, #slot, #name, move |event| { #handler })?; }
+            quote_spanned! {span=> __fusor_scope.bundle_on(&__fusor_bundle, #slot, #name, move |event| { #handler })?; }
         }
         // These operations require the ordinary typed handles or managed lifetimes.
         Binding::Branch { .. }
@@ -210,7 +210,7 @@ fn bundle_binding(
         #locals
         #ready
         let state = ::std::rc::Rc::clone(&state);
-        let __rf_children = __rf_children.clone();
+        let __fusor_children = __fusor_children.clone();
         #operation
     }})
 }

@@ -25,7 +25,7 @@ fn text_anchors_roundtrip_and_malformed_reserved_comments_fail() {
         );
     }
     assert_eq!(TextMarker::parse("ordinary comment").unwrap(), None);
-    for invalid in ["rf:", "rf:no", "/rf:01", "rf:1 trailing"] {
+    for invalid in ["fusor:", "fusor:no", "/fusor:01", "fusor:1 trailing"] {
         assert!(TextMarker::parse(invalid).is_err(), "{invalid}");
     }
 }

@@ -42,10 +42,10 @@ impl Unit {
             metadata: Entry { unit: D::UNIT.into(), descriptor: D::NAME.into(), props_schema: D::SCHEMA.into(), template_hash: C::TEMPLATE_HASH.into(), mode: D::MODE },
             make: Box::new(move |host, text| {
                 let props = crate::decode::<D::Props>(text).map_err(|error| JsValue::from_str(&format!("island props: {error}")))?;
-                if host.get_attribute("data-rf-schema").as_deref() != Some(D::SCHEMA) || host.get_attribute("data-rf-hash").as_deref() != Some(C::TEMPLATE_HASH) {
+                if host.get_attribute("data-fusor-schema").as_deref() != Some(D::SCHEMA) || host.get_attribute("data-fusor-hash").as_deref() != Some(C::TEMPLATE_HASH) {
                     return Err(JsValue::from_str("island schema/template mismatch"));
                 }
-                let initial: Vec<Element> = (0..host.child_element_count()).filter_map(|index| host.children().item(index)).filter(|node| !node.has_attribute("data-rf-props")).collect();
+                let initial: Vec<Element> = (0..host.child_element_count()).filter_map(|index| host.children().item(index)).filter(|node| !node.has_attribute("data-fusor-props")).collect();
                 if initial.len() != 1 { return Err(JsValue::from_str("an island requires exactly one initial component root")); }
                 match D::MODE {
                     RenderMode::Attach => delivery::with_root(&initial[0], || C::prepare_component(None, Box::new(|owner| Ok(make(owner, props)))))
@@ -109,7 +109,7 @@ impl Unit {
 }
 
 /// Export one unit with no application start function. The expression registers
-/// typed factories; component construction happens only in `__rf_activate`.
+/// typed factories; component construction happens only in `__fusor_activate`.
 #[macro_export]
 macro_rules! export {
     ($unit:expr) => {
@@ -117,17 +117,17 @@ macro_rules! export {
         // by macros/dependencies. Reserve that native compiler slot with a pure
         // engine guard, so application startup cannot run eagerly in a unit.
         #[::wasm_bindgen::prelude::wasm_bindgen(start)]
-        pub fn __rf_delivery_start_guard() {}
-        ::std::thread_local! { static __RF_UNIT: ::std::cell::OnceCell<$crate::browser::Unit> = const { ::std::cell::OnceCell::new() }; }
-        fn __rf_unit<R>(read: impl FnOnce(&$crate::browser::Unit) -> R) -> R { __RF_UNIT.with(|unit| read(unit.get_or_init(|| $unit))) }
+        pub fn __fusor_delivery_start_guard() {}
+        ::std::thread_local! { static __FUSOR_UNIT: ::std::cell::OnceCell<$crate::browser::Unit> = const { ::std::cell::OnceCell::new() }; }
+        fn __fusor_unit<R>(read: impl FnOnce(&$crate::browser::Unit) -> R) -> R { __FUSOR_UNIT.with(|unit| read(unit.get_or_init(|| $unit))) }
         #[::wasm_bindgen::prelude::wasm_bindgen]
-        pub fn __rf_manifest() -> ::std::string::String { __rf_unit(|unit| unit.manifest()) }
+        pub fn __fusor_manifest() -> ::std::string::String { __fusor_unit(|unit| unit.manifest()) }
         #[::wasm_bindgen::prelude::wasm_bindgen]
-        pub fn __rf_activate(descriptor: &str, host: &$crate::browser::IslandElement, props: &str, token: &str) -> ::std::result::Result<$crate::browser::IslandActivation, ::wasm_bindgen::JsValue> {
-            __rf_unit(|unit| unit.activate(descriptor, host, props, token))
+        pub fn __fusor_activate(descriptor: &str, host: &$crate::browser::IslandElement, props: &str, token: &str) -> ::std::result::Result<$crate::browser::IslandActivation, ::wasm_bindgen::JsValue> {
+            __fusor_unit(|unit| unit.activate(descriptor, host, props, token))
         }
         #[::wasm_bindgen::prelude::wasm_bindgen]
-        pub fn __rf_dispose(token: &str) { __rf_unit(|unit| unit.dispose(token)); }
+        pub fn __fusor_dispose(token: &str) { __fusor_unit(|unit| unit.dispose(token)); }
     };
 }
 #[doc(hidden)]

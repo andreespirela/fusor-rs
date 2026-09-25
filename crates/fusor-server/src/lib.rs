@@ -176,7 +176,7 @@ impl<'a> Context<'a> {
             .ok_or("island instance counter overflow")?;
         let id = id
             .map(str::to_owned)
-            .unwrap_or_else(|| format!("rf-island-{}", self.next));
+            .unwrap_or_else(|| format!("fusor-island-{}", self.next));
         if id.is_empty() || !self.instances.insert(id.clone()) {
             return Err("island instance IDs must be nonempty and unique".into());
         }
@@ -220,13 +220,13 @@ impl PreparedIsland {
     pub fn attributes(&self, html: &mut Writer) {
         for (name, value) in [
             ("id", self.id.as_str()),
-            ("data-rf-island", self.descriptor),
-            ("data-rf-unit", self.unit),
-            ("data-rf-generation", self.generation.as_str()),
-            ("data-rf-schema", self.schema),
-            ("data-rf-hash", self.hash.as_str()),
-            ("data-rf-activate", self.activation.as_str()),
-            ("data-rf-prefetch", self.prefetch.as_str()),
+            ("data-fusor-island", self.descriptor),
+            ("data-fusor-unit", self.unit),
+            ("data-fusor-generation", self.generation.as_str()),
+            ("data-fusor-schema", self.schema),
+            ("data-fusor-hash", self.hash.as_str()),
+            ("data-fusor-activate", self.activation.as_str()),
+            ("data-fusor-prefetch", self.prefetch.as_str()),
         ] {
             html.attr(name, value);
         }
@@ -235,7 +235,7 @@ impl PreparedIsland {
         html.child(&self.initial);
         html.open("script");
         html.attr("type", "application/json");
-        html.attr("data-rf-props", "");
+        html.attr("data-fusor-props", "");
         html.end_open();
         html.inert_json(&self.props);
         html.close("script");

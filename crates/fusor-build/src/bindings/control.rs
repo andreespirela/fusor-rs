@@ -197,7 +197,7 @@ pub(super) fn selection(
         }));
         quote! { #pattern => (#index, (#data, #environment)) }
     });
-    quote! {{ let __rf_value = { #value }; #[deny(non_snake_case)] match __rf_value { #(#arms),* } }}
+    quote! {{ let __fusor_value = { #value }; #[deny(non_snake_case)] match __fusor_value { #(#arms),* } }}
 }
 
 /// Each lexical capture is a normal Memo, identical to ForEach's public contract.
@@ -211,16 +211,16 @@ pub(super) fn projections(
         let field = field(i);
         quote! {
             let #name = {
-                let __rf_data = __rf_data.clone();
-                ::fusor::memo(move || __rf_data.with(|__rf_data| {
-                    __rf_data.0 #variant .as_ref().expect("active branch data") #field .clone()
+                let __fusor_data = __fusor_data.clone();
+                ::fusor::memo(move || __fusor_data.with(|__fusor_data| {
+                    __fusor_data.0 #variant .as_ref().expect("active branch data") #field .clone()
                 }))
             };
         }
     });
     let environment = snapshots.iter().enumerate().map(|(index, (name, _))| {
         let field = field(index);
-        quote! { let #name = { let __rf_data = __rf_data.clone(); ::fusor::derived(move || __rf_data.with(|__rf_data| __rf_data.1 #field .get())) }; }
+        quote! { let #name = { let __fusor_data = __fusor_data.clone(); ::fusor::derived(move || __fusor_data.with(|__fusor_data| __fusor_data.1 #field .get())) }; }
     });
     quote! { #(#fields)* #(#environment)* }
 }

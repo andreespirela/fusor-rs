@@ -11,7 +11,7 @@ const children = node => {
   for (let i = 0; i < nodes.length; i++) {
     const child = nodes[i];
     result.push(child);
-    if (child.nodeType === COMMENT && /^rf:(?:mount:)?\d+$/.test(child.data)) {
+    if (child.nodeType === COMMENT && /^fusor:(?:mount:)?\d+$/.test(child.data)) {
       const end = `/${child.data}`;
       while (++i < nodes.length && !(nodes[i].nodeType === COMMENT && nodes[i].data === end)) {}
       if (i === nodes.length) mismatch("missing managed content anchor");
@@ -44,32 +44,32 @@ function plan(before, after, live, edits) {
     if (!normalized.isEqualNode(after)) mismatch("noscript markup changed");
     return;
   }
-  if (before.hasAttribute("data-rf-external") || live.hasAttribute("data-rf-external")) mismatch("external widget markup changed");
+  if (before.hasAttribute("data-fusor-external") || live.hasAttribute("data-fusor-external")) mismatch("external widget markup changed");
   if (before.localName === "script") {
     // The loader carries the document's revision; updating it is not executable
     // code replacement. Every other script change requires a fresh document.
     const a = before.cloneNode(true), b = after.cloneNode(true);
-    a.removeAttribute("data-rf-revision"); b.removeAttribute("data-rf-revision");
+    a.removeAttribute("data-fusor-revision"); b.removeAttribute("data-fusor-revision");
     if (!a.isEqualNode(b)) mismatch("script changed");
     return;
   }
   for (const name of new Set([...before.getAttributeNames(), ...after.getAttributeNames()])) {
     const old = before.getAttribute(name), next = after.getAttribute(name);
     if (old === next) continue;
-    if (name.startsWith("data-rf-") || name.startsWith("on") || ["value", "checked", "selected", "srcdoc"].includes(name)) mismatch(`attribute ${name} requires reload`);
+    if ((name.startsWith("data-fusor-") && name !== "data-fusor-link") || name.startsWith("on") || ["value", "checked", "selected", "srcdoc"].includes(name)) mismatch(`attribute ${name} requires reload`);
     if (live.getAttribute(name) !== old && live.getAttribute(name) !== next) mismatch(`attribute ${name} is controlled by application code`);
     edits.push(() => next === null ? live.removeAttribute(name) : live.setAttribute(name, next));
   }
-  if (before.hasAttribute("data-rf-text")) {
+  if (before.hasAttribute("data-fusor-text")) {
     // Only the compiler marks exact sole-child bindings. Declarations stay
     // empty while the runtime owns one Text node; static host edits are safe.
-    if (before.getAttribute("data-rf-text") !== live.getAttribute("data-rf-text")
+    if (before.getAttribute("data-fusor-text") !== live.getAttribute("data-fusor-text")
         || before.childNodes.length || after.childNodes.length
         || live.childNodes.length > 1
         || (live.firstChild && live.firstChild.nodeType !== TEXT)) mismatch("dynamic text structure changed");
     return;
   }
-  if (before.hasAttribute("data-rf-managed")) {
+  if (before.hasAttribute("data-fusor-managed")) {
     if (before.innerHTML !== after.innerHTML) mismatch("managed child markup changed");
     return;
   }
@@ -82,11 +82,11 @@ function plan(before, after, live, edits) {
 export function patchDocument(before, after, live = document) {
   const edits = [];
   plan(before.documentElement, after.documentElement, live.documentElement, edits);
-  const templates = before.querySelectorAll("template[data-rf-component]");
+  const templates = before.querySelectorAll("template[data-fusor-component]");
   for (const template of templates) {
-    const id = template.getAttribute("data-rf-component");
-    const next = after.querySelector(`template[data-rf-component="${id}"]`);
-    const declaration = live.querySelector(`template[data-rf-component="${id}"]`);
+    const id = template.getAttribute("data-fusor-component");
+    const next = after.querySelector(`template[data-fusor-component="${id}"]`);
+    const declaration = live.querySelector(`template[data-fusor-component="${id}"]`);
     if (!next || !declaration) mismatch("component declaration changed");
     if (template.content.isEqualNode(next.content)) continue;
     if (!template.content.firstElementChild || !next.content.firstElementChild
@@ -95,7 +95,7 @@ export function patchDocument(before, after, live = document) {
     // surrounding document does not compare it. Patch future mounts as well
     // as already mounted instances.
     plan(template.content.firstElementChild, next.content.firstElementChild, declaration.content.firstElementChild, edits);
-    for (const instance of live.querySelectorAll(`[data-rf-instance="${id}"]`)) {
+    for (const instance of live.querySelectorAll(`[data-fusor-instance="${id}"]`)) {
       plan(template.content.firstElementChild, next.content.firstElementChild, instance, edits);
     }
   }
@@ -106,7 +106,7 @@ export function patchDocument(before, after, live = document) {
 export function watch(generation, base) {
   // Capture authored browser structure before Wasm inserts children/text/widgets.
   let baseline = document.cloneNode(true);
-  let revision = Number(document.querySelector("script[data-rf-revision]")?.getAttribute("data-rf-revision") || 0);
+  let revision = Number(document.querySelector("script[data-fusor-revision]")?.getAttribute("data-fusor-revision") || 0);
   let busy = false;
   const timer = setInterval(async () => {
     if (busy) return;
@@ -128,7 +128,7 @@ export function watch(generation, base) {
         for (const link of document.querySelectorAll('link[rel="stylesheet"][href]')) {
           const url = new URL(link.href);
           if (url.origin === location.origin && url.pathname.startsWith(base)) {
-            url.searchParams.set("__rf", String(revision)); link.href = url.href;
+            url.searchParams.set("__fusor", String(revision)); link.href = url.href;
           }
         }
         document.dispatchEvent(new CustomEvent("fusor:refresh", { detail: { revision, changed } }));

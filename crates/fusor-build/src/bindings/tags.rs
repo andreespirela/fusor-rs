@@ -286,5 +286,5 @@ pub(super) fn void_element(name: &str) -> bool {
 }
 
 pub(super) fn reserved_scope_name(name: &str) -> bool {
-    matches!(name, "state" | "owner" | "event" | "ready") || name.starts_with("__rf")
+    matches!(name, "state" | "owner" | "event" | "ready") || name.starts_with("__fusor")
 }

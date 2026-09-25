@@ -117,12 +117,12 @@ try {
     // validation, preserve the old mounted panel, and dispose the failed attempt.
     await page.evaluate(() => {
       window.panel = document.querySelector('main > .panel');
-      for (const template of document.querySelectorAll('template[data-rf-component]')) {
+      for (const template of document.querySelectorAll('template[data-fusor-component]')) {
         if (!template.content.querySelector('.projected')) continue;
         const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_COMMENT);
         let node;
-        while ((node = walker.nextNode())) if (node.data.startsWith('/rf:mount:')) {
-          window.anchor = node; window.originalAnchor = node.data; node.data = '/rf:mount:9999'; break;
+        while ((node = walker.nextNode())) if (node.data.startsWith('/fusor:mount:')) {
+          window.anchor = node; window.originalAnchor = node.data; node.data = '/fusor:mount:9999'; break;
         }
       }
       window.client.reset_panel(1);
@@ -156,7 +156,7 @@ try {
     // The live document parses noscript differently from DOMParser. Unchanged
     // fallback markup must not turn an otherwise compatible edit into a reload.
     const fallback = await browser.newPage();
-    const fallbackSource = `<!doctype html><html><head><title>Refresh</title></head><body><h1>Original</h1><noscript><P class='fallback'>Enable &amp; use JavaScript</P></noscript><template data-rf-component="42"><!--rf:mount:0--><!--/rf:mount:0--></template></body></html>`;
+    const fallbackSource = `<!doctype html><html><head><title>Refresh</title></head><body><h1>Original</h1><noscript><P class='fallback'>Enable &amp; use JavaScript</P></noscript><template data-fusor-component="42"><!--fusor:mount:0--><!--/fusor:mount:0--></template></body></html>`;
     await fallback.setContent(fallbackSource);
     const fallbackResult = await fallback.evaluate(async ({ code, source }) => {
       const { patchDocument } = await import(`data:text/javascript;base64,${btoa(code)}`);

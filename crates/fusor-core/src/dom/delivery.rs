@@ -5,14 +5,14 @@ use wasm_bindgen::prelude::*;
 use web_sys::Element;
 
 #[wasm_bindgen(
-    inline_js = "export function __rf_dispose_tree(root) { globalThis.__fusor_islands?.disposeTree(root); }"
+    inline_js = "export function __fusor_dispose_tree(root) { globalThis.__fusor_islands?.disposeTree(root); }"
 )]
 extern "C" {
-    fn __rf_dispose_tree(root: &Element);
+    fn __fusor_dispose_tree(root: &Element);
 }
 
 pub(super) fn dispose_tree(root: &Element) {
-    __rf_dispose_tree(root);
+    __fusor_dispose_tree(root);
 }
 
 thread_local! {

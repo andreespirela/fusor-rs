@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 
 const repository = root;
-const scratch = await realpath(await temporaryDirectory('rf-javascript-dev-'));
+const scratch = await realpath(await temporaryDirectory('fusor-javascript-dev-'));
 const app = join(scratch, 'native-module-watch');
 const executable = join(repository, 'target/debug', process.platform === 'win32' ? 'fusor.exe' : 'fusor');
 const env = { ...buildEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable", CARGO_NET_OFFLINE: 'true', npm_config_cache: join(root, 'target/npm-cache'), CARGO_TARGET_DIR: join(repository, 'target') };

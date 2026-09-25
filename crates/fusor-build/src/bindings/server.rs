@@ -107,14 +107,14 @@ fn construct_child(
     let body = children
         .filter(|index| !components[*index].empty)
         .map(|index| component_body(&components[index], components, false));
-    let content = body.map(|body| quote! { Some(&(|__rf_context: &mut ::fusor_server::Context<'_>| { #body }) as &::fusor_server::Children<'_>) }).unwrap_or_else(|| quote! { None });
+    let content = body.map(|body| quote! { Some(&(|__fusor_context: &mut ::fusor_server::Context<'_>| { #body }) as &::fusor_server::Children<'_>) }).unwrap_or_else(|| quote! { None });
     let method = if into {
         quote! { try_child_into_with_children }
     } else {
         quote! { try_child_with_children }
     };
-    let writer = into.then(|| quote! { , __rf_writer });
-    quote_spanned! {ty.span()=> __rf_context.#method(|owner| {
+    let writer = into.then(|| quote! { , __fusor_writer });
+    quote_spanned! {ty.span()=> __fusor_context.#method(|owner| {
         type __FusorInputs = <#ty as ::fusor::dom::FromInputs>::Inputs;
         <#ty as ::fusor::dom::FromInputs>::from_inputs(__FusorInputs { #(#fields),* }, owner)
             .map_err(|_| ::std::string::String::from(concat!("component ", stringify!(#ty), " input construction failed")))
@@ -154,7 +154,7 @@ impl Emission {
         };
         let editable = std::mem::take(&mut self.editable);
         self.statements.push(quote! {
-            __rf_writer.static_markup(#markup, #first_open, #editable);
+            __fusor_writer.static_markup(#markup, #first_open, #editable);
         });
     }
 
@@ -195,7 +195,7 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
     emitter.naively_switch_states(true);
     let mut body = Emission::default();
     if component.fragment {
-        body.literal("<!--rf:fragment-->");
+        body.literal("<!--fusor:fragment-->");
     }
     let mut depth = 0;
     let mut raw = false;
@@ -237,8 +237,8 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
                         let value = String::from_utf8_lossy(value).into_owned(); quote! { ::std::option::Option::Some(::std::string::String::from(#value)) }
                     } else { quote! { ::std::option::Option::<::std::string::String>::None } };
                     body.push(quote_spanned! {span=>
-                        let __rf_island_id = #id;
-                        let __rf_island = __rf_context.prepare_island::<#descriptor>(__rf_island_id.as_deref(), &{ #props }, ::fusor_islands::Activation::#activation, ::fusor_islands::Prefetch::#prefetch)?;
+                        let __fusor_island_id = #id;
+                        let __fusor_island = __fusor_context.prepare_island::<#descriptor>(__fusor_island_id.as_deref(), &{ #props }, ::fusor_islands::Activation::#activation, ::fusor_islands::Prefetch::#prefetch)?;
                     });
                 }
                 let sensitive = name == "input"
@@ -268,8 +268,8 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
                 if first && component.kind == RootKind::Template && !component.fragment {
                     let id = component.id.to_string();
                     let version = template::VERSION.to_string();
-                    static_attribute(&mut static_attributes, "data-rf-component", &id);
-                    static_attribute(&mut static_attributes, "data-rf-version", &version);
+                    static_attribute(&mut static_attributes, "data-fusor-component", &id);
+                    static_attribute(&mut static_attributes, "data-fusor-version", &version);
                 }
                 body.literal(&static_attributes);
                 body.editable |= editable;
@@ -283,7 +283,7 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
                     if let Some(Binding::Text { value, .. }) = component.bindings.iter().find(
                         |binding| matches!(binding, Binding::Text { slot: text, .. } if *text == slot),
                     ) {
-                        content.push(quote_spanned! {value.span()=> __rf_writer.text(&(#value)); });
+                        content.push(quote_spanned! {value.span()=> __fusor_writer.text(&(#value)); });
                     }
                 }
                 for binding in &bindings {
@@ -293,40 +293,40 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
                             if island.is_none() || name != "id" =>
                         {
                             let value = string(value);
-                            quote_spanned! {span=> __rf_writer.attr(#name, #value); }
+                            quote_spanned! {span=> __fusor_writer.attr(#name, #value); }
                         }
                         Binding::Boolean { name, value, .. } => {
-                            quote_spanned! {span=> __rf_writer.boolean(#name, { #value }); }
+                            quote_spanned! {span=> __fusor_writer.boolean(#name, { #value }); }
                         }
                         Binding::Checked { value, .. } => {
-                            quote_spanned! {span=> __rf_writer.boolean("checked", { #value }); }
+                            quote_spanned! {span=> __fusor_writer.boolean("checked", { #value }); }
                         }
                         Binding::Value { value, .. } if !sensitive => {
                             let value = string(value);
-                            quote_spanned! {span=> __rf_writer.attr("value", #value); }
+                            quote_spanned! {span=> __fusor_writer.attr("value", #value); }
                         }
                         Binding::Input {
                             kind: InputKind::Value,
                             value,
                             ..
                         } if !sensitive => {
-                            quote_spanned! {span=> __rf_writer.attr("value", (#value).get()); }
+                            quote_spanned! {span=> __fusor_writer.attr("value", (#value).get()); }
                         }
                         Binding::Input {
                             kind: InputKind::Checked,
                             value,
                             ..
                         } => {
-                            quote_spanned! {span=> __rf_writer.boolean("checked", (#value).get()); }
+                            quote_spanned! {span=> __fusor_writer.boolean("checked", (#value).get()); }
                         }
                         Binding::Field { value, .. } if !sensitive => {
                             if name == "textarea" {
                                 content.push(
-                                    quote_spanned! {span=> __rf_writer.text((#value).raw()); },
+                                    quote_spanned! {span=> __fusor_writer.text((#value).raw()); },
                                 );
                                 quote! {}
                             } else {
-                                quote_spanned! {span=> __rf_writer.attr("value", (#value).raw()); }
+                                quote_spanned! {span=> __fusor_writer.attr("value", (#value).raw()); }
                             }
                         }
                         Binding::ForEach {
@@ -342,13 +342,13 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
                             };
                             let row = component_body(&components[*row], components, true);
                             content.push(quote_spanned! {span=> {
-                                let __rf_items = ::fusor_components::ForEach::entries({ #items });
-                                let mut __rf_keys = ::std::collections::BTreeSet::new();
-                                for __rf_entry in __rf_items {
-                                    let __rf_key = ::fusor_components::ForEach::key(&__rf_entry, #key);
-                                    if !__rf_keys.insert(__rf_key.clone()) { return ::std::result::Result::Err("duplicate key in ForEach".into()); }
-                                    __rf_writer.keyed_child(&__rf_key, |mut __rf_writer| {
-                                        let state = #row_constructor(state, __rf_entry);
+                                let __fusor_items = ::fusor_components::ForEach::entries({ #items });
+                                let mut __fusor_keys = ::std::collections::BTreeSet::new();
+                                for __fusor_entry in __fusor_items {
+                                    let __fusor_key = ::fusor_components::ForEach::key(&__fusor_entry, #key);
+                                    if !__fusor_keys.insert(__fusor_key.clone()) { return ::std::result::Result::Err("duplicate key in ForEach".into()); }
+                                    __fusor_writer.keyed_child(&__fusor_key, |mut __fusor_writer| {
+                                        let state = #row_constructor(state, __fusor_entry);
                                         let state = &state;
                                         #row
                                     })?;
@@ -361,9 +361,9 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
                             // borrowed nested Writers; the latter reborrow is
                             // intentional. Scope the lint to framework calls.
                             content.push(
-                                quote_spanned! {span=> #[allow(clippy::needless_borrow)] __rf_island.contents(&mut __rf_writer); },
+                                quote_spanned! {span=> #[allow(clippy::needless_borrow)] __fusor_island.contents(&mut __fusor_writer); },
                             );
-                            quote! { #[allow(clippy::needless_borrow)] __rf_island.attributes(&mut __rf_writer); }
+                            quote! { #[allow(clippy::needless_borrow)] __fusor_island.attributes(&mut __fusor_writer); }
                         }
                         // Guarded values omit sensitive inputs and island-owned IDs.
                         Binding::Attribute { .. } | Binding::Value { .. }
@@ -387,8 +387,8 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
                         .get(b"class".as_slice())
                         .map(|value| String::from_utf8_lossy(value).into_owned())
                         .unwrap_or_default();
-                    let classes = bindings.iter().filter_map(|binding| match binding { Binding::Class { name, value, .. } => Some(quote_spanned! {value.span()=> if #value { __rf_classes.push(' '); __rf_classes.push_str(#name); } }), _ => None });
-                    body.push(quote! { { let mut __rf_classes = ::std::string::String::from(#initial); #(#classes)* __rf_writer.attr("class", __rf_classes.trim()); } });
+                    let classes = bindings.iter().filter_map(|binding| match binding { Binding::Class { name, value, .. } => Some(quote_spanned! {value.span()=> if #value { __fusor_classes.push(' '); __fusor_classes.push_str(#name); } }), _ => None });
+                    body.push(quote! { { let mut __fusor_classes = ::std::string::String::from(#initial); #(#classes)* __fusor_writer.attr("class", __fusor_classes.trim()); } });
                 }
                 body.literal(">");
                 body.push(quote! { #(#content)* });
@@ -435,19 +435,19 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
                             let pattern = &case.pattern;
                             let captures = case.names.iter().map(|name| quote! { let #name = ::fusor::memo(move || #name.clone()); });
                             let child = component_body(&components[case.body], components, true);
-                            let marker = format!("<!--rf:branch:{index}-->");
-                            quote! { #pattern => { #(#captures)* __rf_writer.static_markup(#marker, None, false); #child?; } }
+                            let marker = format!("<!--fusor:branch:{index}-->");
+                            quote! { #pattern => { #(#captures)* __fusor_writer.static_markup(#marker, None, false); #child?; } }
                         });
-                        body.push(quote_spanned! {value.span()=> { let __rf_value = { #value }; #[deny(non_snake_case)] match __rf_value { #(#arms),* } } });
+                        body.push(quote_spanned! {value.span()=> { let __fusor_value = { #value }; #[deny(non_snake_case)] match __fusor_value { #(#arms),* } } });
                     }
                     if component.bindings.iter().any(|binding| matches!(binding, Binding::Children { point, .. } if *point == id)) {
-                        body.push(quote! { if let Some(children) = __rf_children { let child = children(__rf_context)?; __rf_writer.child(&child); } });
+                        body.push(quote! { if let Some(children) = __fusor_children { let child = children(__fusor_context)?; __fusor_writer.child(&child); } });
                     }
                     if let Some(Binding::Invocation { ty, inputs, children, condition, .. }) = component.bindings.iter().find(|binding| matches!(binding, Binding::Invocation { point, .. } if *point == id)) {
                         let condition = condition.as_ref().map(|v| quote! { #v }).unwrap_or_else(|| quote! { true });
                         let child = construct_child(ty, inputs, *children, components, true);
                         body.push(quote_spanned! {ty.span()=> if #condition {
-                            __rf_writer.child_into(|__rf_writer| #child)?;
+                            __fusor_writer.child_into(|__fusor_writer| #child)?;
                         } });
                     }
                 }
@@ -455,7 +455,7 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
                     if let Some(Binding::Text { value, .. }) = component.bindings.iter().find(
                         |binding| matches!(binding, Binding::Text { slot, .. } if *slot == id),
                     ) {
-                        body.push(quote_spanned! {value.span()=> __rf_writer.text(&(#value)); });
+                        body.push(quote_spanned! {value.span()=> __fusor_writer.text(&(#value)); });
                     }
                 }
             }
@@ -463,16 +463,16 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
         }
     }
     if component.fragment {
-        body.literal("<!--/rf:fragment-->");
+        body.literal("<!--/fusor:fragment-->");
     }
     let body = body.finish();
     if into {
         quote! {{ #(#body)* ::std::result::Result::<(), ::std::string::String>::Ok(()) }}
     } else {
         quote! {{
-            let mut __rf_writer = ::fusor_server::Writer::new();
+            let mut __fusor_writer = ::fusor_server::Writer::new();
             #(#body)*
-            ::std::result::Result::<_, ::std::string::String>::Ok(__rf_writer.finish())
+            ::std::result::Result::<_, ::std::string::String>::Ok(__fusor_writer.finish())
         }}
     }
 }
@@ -487,17 +487,17 @@ pub(super) fn component(component: &Component, components: &[Component]) -> Toke
         impl ::fusor_server::Render for #ty {
             const TEMPLATE_HASH: &'static str = #hash;
             #[allow(unused_variables, unused_braces, unused_parens, clippy::let_and_return, clippy::needless_borrows_for_generic_args, clippy::clone_on_copy)]
-            fn render(&self, __rf_context: &mut ::fusor_server::Context<'_>) -> ::fusor_server::Result<::fusor_server::Html> {
-                self.render_with_children(__rf_context, None)
+            fn render(&self, __fusor_context: &mut ::fusor_server::Context<'_>) -> ::fusor_server::Result<::fusor_server::Html> {
+                self.render_with_children(__fusor_context, None)
             }
             #[allow(unused_variables, unused_braces, unused_parens, clippy::let_and_return, clippy::needless_borrows_for_generic_args, clippy::clone_on_copy)]
-            fn render_with_children(&self, __rf_context: &mut ::fusor_server::Context<'_>, __rf_children: Option<&::fusor_server::Children<'_>>) -> ::fusor_server::Result<::fusor_server::Html> {
+            fn render_with_children(&self, __fusor_context: &mut ::fusor_server::Context<'_>, __fusor_children: Option<&::fusor_server::Children<'_>>) -> ::fusor_server::Result<::fusor_server::Html> {
                 let mut writer = ::fusor_server::Writer::new();
-                ::fusor_server::Render::render_into(self, __rf_context, __rf_children, &mut writer)?;
+                ::fusor_server::Render::render_into(self, __fusor_context, __fusor_children, &mut writer)?;
                 Ok(writer.finish())
             }
             #[allow(unused_variables, unused_mut, unused_braces, unused_parens, clippy::let_and_return, clippy::needless_borrows_for_generic_args, clippy::clone_on_copy)]
-            fn render_into(&self, __rf_context: &mut ::fusor_server::Context<'_>, __rf_children: Option<&::fusor_server::Children<'_>>, mut __rf_writer: &mut ::fusor_server::Writer) -> ::fusor_server::Result<()> {
+            fn render_into(&self, __fusor_context: &mut ::fusor_server::Context<'_>, __fusor_children: Option<&::fusor_server::Children<'_>>, mut __fusor_writer: &mut ::fusor_server::Writer) -> ::fusor_server::Result<()> {
                 let state = self;
                 #body
             }

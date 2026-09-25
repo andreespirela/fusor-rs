@@ -10,7 +10,7 @@ import { chromium, firefox, webkit } from 'playwright';
 
 const exec = promisify(execFile);
 const root = process.cwd();
-const scratch = await mkdtemp(join(tmpdir(), 'rf-direct-text-'));
+const scratch = await mkdtemp(join(tmpdir(), 'fusor-direct-text-'));
 const suffix = process.platform === 'win32' ? '.exe' : '';
 // One large descriptor, not a list of tiny component instances: its direct and
 // anchored TextIds interleave, then reach handle installation in separate groups.
@@ -218,7 +218,7 @@ mod browser {
   assert.match(html, /&lt;\/script&gt;/);
   assert.ok(html.includes('日本語😀'));
   for (const tag of ['pre', 'listing']) {
-    assert.match(html, new RegExp(`<${tag}\\b[^>]*><!--rf:\\d+-->\\nline `));
+    assert.match(html, new RegExp(`<${tag}\\b[^>]*><!--fusor:\\d+-->\\nline `));
   }
 
   const dist = join(scratch, 'dist');
@@ -297,14 +297,14 @@ mod browser {
         }
         for (const id of ['value', 'empty', 'normal', 'projected']) {
           require(kinds(id) === '3', `${id}: expected exactly one Text node`);
-          require(byId(id).hasAttribute('data-rf-text'), `${id}: missing direct marker`);
+          require(byId(id).hasAttribute('data-fusor-text'), `${id}: missing direct marker`);
         }
-        require(byId('value').hasAttribute('data-rf-node'), 'bound direct host lost element marker');
-        require(!byId('empty').hasAttribute('data-rf-node'), 'text-only host allocated an element marker');
+        require(byId('value').hasAttribute('data-fusor-node'), 'bound direct host lost element marker');
+        require(!byId('empty').hasAttribute('data-fusor-node'), 'text-only host allocated an element marker');
         require(kinds('mixed') === '3,8,3,8,3', 'mixed content lost anchors/static text');
         for (const id of ['pre', 'listing']) {
           require(kinds(id) === '8,3,8', `${id}: missing text anchors`);
-          require(!byId(id).hasAttribute('data-rf-text'), `${id}: incorrectly specialized`);
+          require(!byId(id).hasAttribute('data-fusor-text'), `${id}: incorrectly specialized`);
         }
         const textNodes = new Map(['value', 'empty', 'projected'].map(id => [id, byId(id).firstChild]));
         require(byId('large').children.length === largePairs * 2, 'large descriptor lost elements');
@@ -313,7 +313,7 @@ mod browser {
           const direct = byId(`large-direct-${index}`), anchored = byId(`large-anchored-${index}`);
           require(kinds(direct.id) === '3', `${direct.id}: wrong direct Text shape`);
           require(kinds(anchored.id) === '3,8,3,8,3', `${anchored.id}: wrong anchored Text shape`);
-          require(direct.hasAttribute('data-rf-node') && direct.hasAttribute('data-rf-text'), `${direct.id}: lost host association`);
+          require(direct.hasAttribute('data-fusor-node') && direct.hasAttribute('data-fusor-text'), `${direct.id}: lost host association`);
           largeTextNodes.push([direct, direct.firstChild, 0], [anchored, anchored.childNodes[2], 2]);
         }
         const largeIdentity = () => {

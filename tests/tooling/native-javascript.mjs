@@ -114,7 +114,7 @@ try {
     const app = await import(new URL('./pkg/app.js', boot).href);
     const check = (condition, message) => { if (!condition) throw Error(message); };
     let writes = 0, constructed = 0;
-    customElements.define('rf-properties', class extends HTMLElement {
+    customElements.define('fusor-properties', class extends HTMLElement {
       constructor() { super(); constructed++; }
       set someValue(value) {
         writes++;
@@ -124,7 +124,7 @@ try {
         if (value === 6) app.property_drop();
       }
     });
-    app.property_mount('rf-properties', true);
+    app.property_mount('fusor-properties', true);
     check(writes === 0, 'no setter in preparation');
     app.property_set(2);
     check(writes === 0, 'pending value before activation');
@@ -143,27 +143,27 @@ try {
     app.property_set(6);
     check(element.last === 6, 'setter can dispose its own view');
     element.remove();
-    app.property_mount('rf-delayed', false); app.property_set(7); app.property_set(8);
+    app.property_mount('fusor-delayed', false); app.property_set(7); app.property_set(8);
     const late = document.querySelector('#property-fixture');
     check(!Object.hasOwn(late, 'someValue'), 'no preupgrade property shadows an accessor');
     let lateWrites = 0;
-    customElements.define('rf-delayed', class extends HTMLElement { set someValue(value) { lateWrites++; this.last = value; } });
+    customElements.define('fusor-delayed', class extends HTMLElement { set someValue(value) { lateWrites++; this.last = value; } });
     await Promise.resolve(); await Promise.resolve();
     check(late.last === 8 && lateWrites === 1, 'only the latest value is assigned after upgrade');
     app.property_drop(); late.remove();
-    app.property_mount('rf-disposed', false);
+    app.property_mount('fusor-disposed', false);
     const disposed = document.querySelector('#property-fixture');
     app.property_drop(); disposed.remove();
     let disposedWrites = 0;
-    customElements.define('rf-disposed', class extends HTMLElement { set someValue(value) { disposedWrites++; } });
+    customElements.define('fusor-disposed', class extends HTMLElement { set someValue(value) { disposedWrites++; } });
     customElements.upgrade(disposed);
     await Promise.resolve(); await Promise.resolve();
     check(disposedWrites === 0, 'no late writes after disposal');
     const whenDefined = customElements.whenDefined.bind(customElements);
     let waits = 0;
-    customElements.whenDefined = function(name) { if (name === 'rf-never') waits++; return whenDefined(name); };
+    customElements.whenDefined = function(name) { if (name === 'fusor-never') waits++; return whenDefined(name); };
     for (let i = 0; i < 50; i++) {
-      app.property_mount('rf-never', false);
+      app.property_mount('fusor-never', false);
       const pending = document.querySelector('#property-fixture');
       app.property_drop(); pending.remove();
     }

@@ -1310,7 +1310,7 @@ pub(super) fn parse(
                     return Err(error(
                         source,
                         tag.span.start,
-                        "data-rf-* attributes are reserved for the HTML compiler",
+                        "data-fusor-* attributes are reserved for the HTML compiler",
                     ));
                 }
                 let has_directive = !rust_script
@@ -1874,7 +1874,7 @@ pub(super) fn parse(
                 return Err(error(
                     source,
                     comment.span.start,
-                    "rf: comment markers are reserved for the HTML compiler",
+                    "fusor: comment markers are reserved for the HTML compiler",
                 ));
             }
             _ => {}
