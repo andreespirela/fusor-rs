@@ -44,12 +44,9 @@ try {
     : [join(root, "install.sh"), `v${version}`],
   { env: environment, timeout: 120_000 });
 
-  for (const name of ["fusor", "cargo-fusor"]) {
-    const binary = join(environment.FUSOR_INSTALL, "bin", `${name}${windows ? ".exe" : ""}`);
-    const args = name === "cargo-fusor" ? ["fusor", "--version"] : ["--version"];
-    const output = await command(binary, args, { timeout: 10_000 });
-    assert.equal(output.trim(), `fusor ${version}`, `${name} installed the expected version`);
-  }
+  const binary = join(environment.FUSOR_INSTALL, "bin", `fusor${windows ? ".exe" : ""}`);
+  const output = await command(binary, ["--version"], { timeout: 10_000 });
+  assert.equal(output.trim(), `fusor ${version}`, "fusor installed the expected version");
 } finally {
   await new Promise(resolve => {
     server.close(resolve);

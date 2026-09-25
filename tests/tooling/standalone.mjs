@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { chromium, firefox, webkit } from "@playwright/test";
 
 const scratch = await temporaryDirectory("fusor-standalone-");
-const executable = join(root, "target/debug", `cargo-fusor${process.platform === "win32" ? ".exe" : ""}`);
+const executable = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
 const env = {
   ...buildEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable",
   CARGO_NET_OFFLINE: "true",
@@ -17,7 +17,7 @@ let server;
 let browser;
 
 async function cli(args, cwd = scratch) {
-  return exec(executable, ["fusor", ...args], { cwd, env, timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
+  return exec(executable, args, { cwd, env, timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
 }
 
 const waitFor = (predicate, description) => waitUntil(predicate, description, { timeout: 120_000, interval: 100, process: server });
@@ -46,7 +46,7 @@ async function connectClient(page) {
 }
 
 try {
-  await exec("cargo", ["build", "-p", "cargo-fusor", "--locked", "--offline"], { cwd: root, timeout: 180_000 });
+  await exec("cargo", ["build", "-p", "fusor-cli", "--locked", "--offline"], { cwd: root, timeout: 180_000 });
   const scaffold = join(scratch, "my-app");
   await cli(["new", scaffold, "--framework-path", root]);
   await assert.rejects(cli(["new", scaffold, "--framework-path", root]), /destination already exists/);

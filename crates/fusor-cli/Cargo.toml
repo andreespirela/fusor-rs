@@ -1,7 +1,7 @@
 [package]
 name = "fusor-cli"
 default-run = "fusor"
-description = "The fusor command-line tool: create, develop, build and preview fusor applications"
+description = "The fusor command-line tool: create, develop, build and preview fusor applications."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

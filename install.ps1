@@ -47,9 +47,9 @@ try {
 
   Expand-Archive (Join-Path $temporary $archive) -DestinationPath $temporary
   New-Item -ItemType Directory -Force -Path $bin | Out-Null
-  foreach ($binary in 'fusor.exe', 'cargo-fusor.exe') {
-    Move-Item -Force (Join-Path $temporary "fusor-$number-$target\$binary") (Join-Path $bin $binary)
-  }
+  Move-Item -Force (Join-Path $temporary "fusor-$number-$target\fusor.exe") (Join-Path $bin 'fusor.exe')
+  # Releases up to 0.1.0 also installed cargo-fusor; don't leave a stale copy.
+  Remove-Item -Force (Join-Path $bin 'cargo-fusor.exe') -ErrorAction SilentlyContinue
 } finally {
   Remove-Item -Recurse -Force $temporary -ErrorAction SilentlyContinue
 }

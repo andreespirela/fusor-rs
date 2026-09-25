@@ -37,7 +37,7 @@
 ```
 src/
   main.rs          entry point; maps an Error to an exit code
-  lib.rs           run(), run_cargo(), module wiring
+  lib.rs           run(), module wiring
   cli.rs           clap types only
   context.rs       Context: settings after the flags interact
   error.rs         Error { message, remedy, kind } and the exit-code contract

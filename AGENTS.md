@@ -52,7 +52,6 @@ full reference is `apps/docs/content/pages.json` (slugs
 | `crates/fusor-macros` | `FromInputs` and `JsInputs` derives. |
 | `crates/fusor-components` | Built-in template tags (`App`, `ForEach`, `If`, `Router`, …). |
 | `crates/fusor-cli` | The `fusor` CLI (`new`, `dev`, `build`, `check`, `preview`, `add`, `doctor`, …; hidden `repo check` backs `just check`). Read its `ARCHITECTURE.md` before editing. |
-| `crates/cargo-fusor` | `cargo fusor` subcommand wrapper. |
 | `crates/fusor-async`, `fusor-query`, `fusor-router`, `fusor-std` | Optional packages: async resources, shared queries, typed routing, forms/actions (`fusor-std` re-exports the others behind features). |
 | `crates/fusor-islands`, `fusor-server` | Server-rendered islands and SSR HTML. |
 | `crates/fusor-npm` | Internal npm bundling for the CLI. |

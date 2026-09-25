@@ -40,12 +40,3 @@ pub fn run(args: impl IntoIterator<Item = impl Into<OsString> + Clone>) -> Resul
     };
     commands::dispatch(&cx, action)
 }
-
-/// Cargo passes the subcommand name as an extra first argument.
-pub fn run_cargo(args: impl IntoIterator<Item = impl Into<OsString> + Clone>) -> Result<(), Error> {
-    let mut args: Vec<OsString> = args.into_iter().map(Into::into).collect();
-    if args.get(1).is_some_and(|arg| arg == "fusor") {
-        args.remove(1);
-    }
-    run(args)
-}

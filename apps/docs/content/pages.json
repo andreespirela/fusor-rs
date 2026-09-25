@@ -92,7 +92,7 @@
       {
         "id": "install-unix",
         "title": "Install on macOS or Linux",
-        "body": "Run this command in your terminal. The installer downloads the latest released CLI for your operating system and processor, verifies its checksum, and installs fusor and cargo-fusor in ~/.fusor/bin.",
+        "body": "Run this command in your terminal. The installer downloads the latest released CLI for your operating system and processor, verifies its checksum, and installs fusor in ~/.fusor/bin.",
         "code": "curl -fsSL https://fusor.build/install.sh | sh",
         "language": "Terminal",
         "note": "Follow the PATH instructions printed by the installer. For the default location, add `export PATH=\"$HOME/.fusor/bin:$PATH\"` to ~/.zshrc or ~/.bashrc and reload your shell. To use fusor immediately, run that export command in the current terminal too."
@@ -100,7 +100,7 @@
       {
         "id": "install-windows",
         "title": "Install on Windows",
-        "body": "Run this command in PowerShell. The installer downloads the latest released Windows CLI, verifies its checksum, and installs fusor and cargo-fusor in your user profile’s .fusor\\bin directory.",
+        "body": "Run this command in PowerShell. The installer downloads the latest released Windows CLI, verifies its checksum, and installs fusor in your user profile’s .fusor\\bin directory.",
         "code": "irm https://fusor.build/install.ps1 | iex",
         "language": "PowerShell",
         "note": "The installer adds its bin directory to your user PATH. Open a new PowerShell window after installation so the commands are available."
