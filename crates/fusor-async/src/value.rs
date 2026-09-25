@@ -1,13 +1,13 @@
 //! Read-only declarations evaluated by a coherent renderer, including while a
 //! descendant's ordinary DOM owner is still prepared.
-use crate::{CancellationToken, cancellation::InFlight};
+use crate::{CancellationToken, Loader, Spawner, boxed_loader, cancellation::InFlight, increment};
 use derive_where::derive_where;
 use fusor::{
     OwnerHandle, Registration,
     coherence::{Attempt, BoundaryLifetime, ReadLease},
     versions::Versions,
 };
-use futures_util::future::{Abortable, FutureExt, LocalBoxFuture};
+use futures_util::future::LocalBoxFuture;
 use std::{
     cell::{Cell, RefCell},
     future::Future,
@@ -29,9 +29,10 @@ enum State<T, E> {
     Ready(Rc<T>),
     Error(Rc<E>),
 }
-type Load<K, T, E> = dyn Fn(K, CancellationToken) -> LocalBoxFuture<'static, Result<T, E>>;
-
 struct Inner<K, T, E> {
+    // Declared first: dropping `Inner` aborts and cancels the in-flight read
+    // before any other field drops.
+    in_flight: RefCell<Option<InFlight>>,
     id: u64,
     owner: OwnerHandle,
     boundary: RefCell<Option<(u64, BoundaryLifetime)>>,
@@ -40,114 +41,38 @@ struct Inner<K, T, E> {
     state: RefCell<State<T, E>>,
     generation: Cell<u64>,
     retry: Cell<u64>,
-    request: RefCell<Option<InFlight>>,
     cleanup: RefCell<Option<Registration>>,
-    load: Rc<Load<K, T, E>>,
-    spawn: Box<dyn Fn(LocalBoxFuture<'static, ()>)>,
+    load: Rc<Loader<K, T, E>>,
+    spawn: Box<Spawner>,
 }
 
 impl<K, T, E> Inner<K, T, E> {
+    /// Invalidate the current generation and take its in-flight load, if any.
+    fn take_in_flight(&self) -> Option<InFlight> {
+        increment(&self.generation, "read generation");
+        self.in_flight.take()
+    }
+    /// Stop pending work for a coherent attempt that no longer needs it.
     fn cancel_work(&self) {
-        self.generation.set(
-            self.generation
-                .get()
-                .checked_add(1)
-                .expect("read generation overflow"),
-        );
-        let work = self.request.take();
+        let in_flight = self.take_in_flight();
         if matches!(*self.state.borrow(), State::Pending) {
             *self.state.borrow_mut() = State::Idle;
         }
-        drop(work);
+        drop(in_flight);
     }
     /// Cancel pending work and return to Idle. The retired state is returned so
     /// callers drop its payload only after finishing their own updates.
     fn reset(&self) -> State<T, E> {
-        self.cancel_work();
-        self.state.replace(State::Idle)
+        let in_flight = self.take_in_flight();
+        let retired = self.state.replace(State::Idle);
+        drop(in_flight);
+        retired
     }
-    fn is_current(&self, generation: u64) -> bool {
+    /// Only the latest generation publishes. Unlike `Resource`, a read may finish
+    /// while its owner is still prepared, so only disposal stops it.
+    fn is_latest(&self, generation: u64) -> bool {
         !self.owner.is_disposed() && self.generation.get() == generation
     }
-}
-impl<K, T, E> Drop for Inner<K, T, E> {
-    fn drop(&mut self) {
-        self.request.get_mut().take();
-    }
-}
-
-struct Lease<K, T, E>(Weak<Inner<K, T, E>>);
-impl<K, T, E> ReadLease for Lease<K, T, E> {
-    fn cancel(&self) {
-        if let Some(inner) = self.0.upgrade() {
-            inner.cancel_work();
-        }
-    }
-}
-
-/// A declaration of one read. All changing request inputs belong in `key`.
-/// Loader execution is untracked and uses the supplied local executor. Reads
-/// participate when reached by a boundary, not merely when declared.
-#[derive_where(Clone)]
-pub struct AsyncValue<K, T, E>(Rc<Inner<K, T, E>>);
-
-impl<K: Clone + PartialEq + 'static, T: 'static, E: std::fmt::Display + 'static>
-    AsyncValue<K, T, E>
-{
-    pub fn new<F: Future<Output = Result<T, E>> + 'static>(
-        owner: &OwnerHandle,
-        key: impl Fn() -> K + 'static,
-        load: impl Fn(K, CancellationToken) -> F + 'static,
-        spawn: impl Fn(LocalBoxFuture<'static, ()>) + 'static,
-    ) -> Self {
-        let id = NEXT.with(|next| {
-            let id = next.get().checked_add(1).expect("read id overflow");
-            next.set(id);
-            id
-        });
-        let inner = Rc::new(Inner {
-            id,
-            owner: owner.clone(),
-            boundary: RefCell::new(None),
-            key: Box::new(key),
-            selected: RefCell::new(None),
-            state: RefCell::new(State::Idle),
-            generation: Cell::new(0),
-            retry: Cell::new(0),
-            request: RefCell::new(None),
-            cleanup: RefCell::new(None),
-            load: Rc::new(move |key, cancel| Box::pin(load(key, cancel))),
-            spawn: Box::new(spawn),
-        });
-        let weak = Rc::downgrade(&inner);
-        let cleanup = owner.on_cleanup(move || {
-            if let Some(inner) = weak.upgrade() {
-                drop(inner.reset());
-            }
-        });
-        *inner.cleanup.borrow_mut() = Some(cleanup);
-        Self(inner)
-    }
-
-    /// Renderer integration. Calling this does not commit the component owner.
-    #[doc(hidden)]
-    pub fn read(&self, attempt: &Attempt) -> Result<AsyncRead<T>, String> {
-        let inner = &self.0;
-        if inner.owner.is_disposed() {
-            return Err("async read owner was disposed".into());
-        }
-        inner.adopt_boundary(attempt)?;
-        let key = inner.select_key();
-        inner.clear_error_on_retry(attempt);
-        attempt.register(inner.id, Rc::new(Lease(Rc::downgrade(inner))));
-        if matches!(*inner.state.borrow(), State::Idle) {
-            inner.start_load(key, attempt);
-        }
-        inner.outcome(attempt)
-    }
-}
-
-impl<K: Clone + PartialEq + 'static, T: 'static, E: std::fmt::Display + 'static> Inner<K, T, E> {
     fn adopt_boundary(&self, attempt: &Attempt) -> Result<(), String> {
         let boundary = attempt.boundary_id();
         let (changed, live) = self
@@ -175,7 +100,10 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: std::fmt::Display + 'static>
         Ok(())
     }
     /// Capture the current key; a different key or changed inputs restart the read.
-    fn select_key(&self) -> K {
+    fn select_key(&self) -> K
+    where
+        K: Clone + PartialEq,
+    {
         let (key, versions) = Versions::capture(|| (self.key)());
         let compatible = self
             .selected
@@ -189,37 +117,49 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: std::fmt::Display + 'static>
         }
         key
     }
+    /// A new retry generation lets a failed read try again.
     fn clear_error_on_retry(&self, attempt: &Attempt) {
         let retry = attempt.retry_generation();
-        if self.retry.replace(retry) != retry && matches!(*self.state.borrow(), State::Error(_)) {
+        if self.retry.get() == retry {
+            return;
+        }
+        self.retry.set(retry);
+        if matches!(*self.state.borrow(), State::Error(_)) {
             drop(self.state.replace(State::Idle));
         }
     }
-    fn start_load(self: &Rc<Self>, key: K, attempt: &Attempt) {
+    fn start_load(self: &Rc<Self>, key: K, attempt: &Attempt)
+    where
+        K: 'static,
+        T: 'static,
+        E: 'static,
+    {
         let generation = self.generation.get();
-        let (request, token, registration) = InFlight::start();
-        *self.request.borrow_mut() = Some(request);
         *self.state.borrow_mut() = State::Pending;
         let weak = Rc::downgrade(self);
         let load = self.load.clone();
         let notify = attempt.notifier();
-        let work = async move {
+        let (in_flight, work) = InFlight::start(move |token| async move {
             let result = load(key, token).await;
-            let Some(inner) = weak.upgrade().filter(|inner| inner.is_current(generation)) else {
+            let Some(inner) = weak.upgrade().filter(|inner| inner.is_latest(generation)) else {
                 return;
             };
-            if let Some(request) = inner.request.take() {
-                request.complete();
+            if let Some(in_flight) = inner.in_flight.take() {
+                in_flight.complete();
             }
             drop(inner.state.replace(match result {
                 Ok(value) => State::Ready(Rc::new(value)),
                 Err(error) => State::Error(Rc::new(error)),
             }));
             notify();
-        };
-        (self.spawn)(Box::pin(Abortable::new(work, registration).map(drop)));
+        });
+        *self.in_flight.borrow_mut() = Some(in_flight);
+        (self.spawn)(work);
     }
-    fn outcome(&self, attempt: &Attempt) -> Result<AsyncRead<T>, String> {
+    fn outcome(&self, attempt: &Attempt) -> Result<AsyncRead<T>, String>
+    where
+        E: std::fmt::Display,
+    {
         // Release the state borrow before running the error's Display code.
         let error = match &*self.state.borrow() {
             State::Ready(value) => return Ok(AsyncRead::Ready(value.clone())),
@@ -230,5 +170,71 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: std::fmt::Display + 'static>
             }
         };
         Err(error.to_string())
+    }
+}
+
+struct Lease<K, T, E>(Weak<Inner<K, T, E>>);
+impl<K, T, E> ReadLease for Lease<K, T, E> {
+    fn cancel(&self) {
+        if let Some(inner) = self.0.upgrade() {
+            inner.cancel_work();
+        }
+    }
+}
+
+/// A declaration of one read. All changing request inputs belong in `key`.
+/// Loader execution is untracked and uses the supplied local executor. Reads
+/// participate when reached by a boundary, not merely when declared.
+#[derive_where(Clone)]
+pub struct AsyncValue<K, T, E>(Rc<Inner<K, T, E>>);
+
+impl<K: Clone + PartialEq + 'static, T: 'static, E: std::fmt::Display + 'static>
+    AsyncValue<K, T, E>
+{
+    pub fn new<F: Future<Output = Result<T, E>> + 'static>(
+        owner: &OwnerHandle,
+        key: impl Fn() -> K + 'static,
+        load: impl Fn(K, CancellationToken) -> F + 'static,
+        spawn: impl Fn(LocalBoxFuture<'static, ()>) + 'static,
+    ) -> Self {
+        let inner = Rc::new(Inner {
+            in_flight: RefCell::new(None),
+            id: NEXT.with(|next| increment(next, "read id")),
+            owner: owner.clone(),
+            boundary: RefCell::new(None),
+            key: Box::new(key),
+            selected: RefCell::new(None),
+            state: RefCell::new(State::Idle),
+            generation: Cell::new(0),
+            retry: Cell::new(0),
+            cleanup: RefCell::new(None),
+            load: boxed_loader(load),
+            spawn: Box::new(spawn),
+        });
+        let weak = Rc::downgrade(&inner);
+        let cleanup = owner.on_cleanup(move || {
+            if let Some(inner) = weak.upgrade() {
+                drop(inner.reset());
+            }
+        });
+        *inner.cleanup.borrow_mut() = Some(cleanup);
+        Self(inner)
+    }
+
+    /// Renderer integration. Calling this does not commit the component owner.
+    #[doc(hidden)]
+    pub fn read(&self, attempt: &Attempt) -> Result<AsyncRead<T>, String> {
+        let inner = &self.0;
+        if inner.owner.is_disposed() {
+            return Err("async read owner was disposed".into());
+        }
+        inner.adopt_boundary(attempt)?;
+        let key = inner.select_key();
+        inner.clear_error_on_retry(attempt);
+        attempt.register(inner.id, Rc::new(Lease(Rc::downgrade(inner))));
+        if matches!(*inner.state.borrow(), State::Idle) {
+            inner.start_load(key, attempt);
+        }
+        inner.outcome(attempt)
     }
 }

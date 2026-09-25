@@ -1,9 +1,10 @@
-use futures_util::future::{AbortHandle, AbortRegistration};
+use futures_util::future::{AbortHandle, Abortable, FutureExt, LocalBoxFuture};
 #[cfg(feature = "browser")]
 use std::cell::OnceCell;
 use std::{
     cell::{Cell, RefCell},
     collections::BTreeMap,
+    future::Future,
     rc::{Rc, Weak},
 };
 
@@ -42,6 +43,9 @@ impl CancellationSource {
     }
     /// The operation completed. Release the source without signalling cancellation.
     pub fn complete(mut self) {
+        self.release();
+    }
+    fn release(&mut self) {
         self.0.take();
     }
 }
@@ -55,25 +59,24 @@ impl Drop for CancellationSource {
 /// of its token. Dropping it aborts the future, then cancels the token.
 pub(crate) struct InFlight {
     abort: AbortHandle,
-    source: Option<CancellationSource>,
+    source: CancellationSource,
 }
 impl InFlight {
-    /// The future must be wrapped in `Abortable` with the returned registration.
-    pub(crate) fn start() -> (Self, CancellationToken, AbortRegistration) {
+    /// Build the load from its token. The returned future stops at its next poll
+    /// once this handle is dropped; hand it to the executor unchanged.
+    pub(crate) fn start<F: Future<Output = ()> + 'static>(
+        work: impl FnOnce(CancellationToken) -> F,
+    ) -> (Self, LocalBoxFuture<'static, ()>) {
         let (abort, registration) = AbortHandle::new_pair();
         let source = CancellationSource::default();
-        let token = source.token();
-        let in_flight = Self {
-            abort,
-            source: Some(source),
-        };
-        (in_flight, token, registration)
+        let work = Abortable::new(work(source.token()), registration)
+            .map(drop)
+            .boxed_local();
+        (Self { abort, source }, work)
     }
     /// The load finished. Release it without signalling cancellation.
     pub(crate) fn complete(mut self) {
-        if let Some(source) = self.source.take() {
-            source.complete();
-        }
+        self.source.release();
     }
 }
 impl Drop for InFlight {
@@ -101,13 +104,7 @@ impl CancellationToken {
         self.0.cancelled.get()
     }
     pub fn on_cancel(&self, callback: impl FnOnce() + 'static) -> CancelRegistration {
-        let id = self
-            .0
-            .next
-            .get()
-            .checked_add(1)
-            .expect("cancellation registration overflow");
-        self.0.next.set(id);
+        let id = crate::increment(&self.0.next, "cancellation registration");
         if self.is_cancelled() {
             callback();
         } else {

@@ -1,8 +1,9 @@
 use fusor::prelude::*;
 use fusor_async::{
-    AsyncValue, browser,
+    AsyncValue, CancellationSource, browser,
     fetch::{self, FetchError},
 };
+use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
 struct App {
@@ -61,5 +62,36 @@ struct Panel;
 #[wasm_bindgen]
 pub fn stop() -> Result<(), JsValue> {
     fusor::dom::application::unmount()
+}
+
+thread_local! { static PROBE: RefCell<Option<CancellationSource>> = const { RefCell::new(None) }; }
+/// Test hook: GET `url` directly and describe the outcome. `cancelled` cancels
+/// before the request starts; `cancel_probe` cancels one in flight.
+#[wasm_bindgen]
+pub async fn probe_get_text(url: String, cancelled: bool) -> String {
+    let source = CancellationSource::default();
+    let token = source.token();
+    if cancelled {
+        source.cancel();
+    }
+    PROBE.with(|probe| *probe.borrow_mut() = Some(source));
+    let result = fetch::get_text(&url, &token).await;
+    if let Some(source) = PROBE.with(|probe| probe.borrow_mut().take()) {
+        source.complete();
+    }
+    match result {
+        Ok(text) => format!("ok: {text}"),
+        Err(error @ FetchError::Cancelled) => format!("cancelled: {error}"),
+        Err(error @ FetchError::Status { .. }) => format!("status: {error}"),
+        Err(error @ FetchError::Js(_)) => format!("js: {error}"),
+    }
+}
+#[wasm_bindgen]
+pub fn cancel_probe() {
+    PROBE.with(|probe| {
+        if let Some(source) = &*probe.borrow() {
+            source.cancel();
+        }
+    });
 }
 fusor::template!("web/index.html");

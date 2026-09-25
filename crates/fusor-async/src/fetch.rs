@@ -39,27 +39,29 @@ impl std::error::Error for FetchError {}
 /// GET and fully read a UTF-8 response body. Rejects non-2xx responses.
 /// `cancel` aborts the Fetch at any point, including while the body is read.
 pub async fn get_text(url: &str, cancel: &CancellationToken) -> Result<String, FetchError> {
-    fetch_text(url, cancel).await.map_err(|error| match error {
+    let result: Result<String, FetchError> = async {
+        let window =
+            web_sys::window().ok_or_else(|| JsValue::from_str("Fetch requires a browser"))?;
+        let options = RequestInit::new();
+        options.set_signal(Some(&cancel.abort_signal()?));
+        let response: Response = JsFuture::from(window.fetch_with_str_and_init(url, &options))
+            .await?
+            .dyn_into()?;
+        if !response.ok() {
+            return Err(FetchError::Status {
+                url: url.to_owned(),
+                status: response.status(),
+            });
+        }
+        JsFuture::from(response.text()?)
+            .await?
+            .as_string()
+            .ok_or_else(|| JsValue::from_str("Fetch returned a non-text body").into())
+    }
+    .await;
+    // An aborted Fetch rejects with a DOM `AbortError`; report it as cancellation.
+    result.map_err(|error| match error {
         FetchError::Js(_) if cancel.is_cancelled() => FetchError::Cancelled,
         error => error,
     })
-}
-
-async fn fetch_text(url: &str, cancel: &CancellationToken) -> Result<String, FetchError> {
-    let window = web_sys::window().ok_or_else(|| JsValue::from_str("Fetch requires a browser"))?;
-    let options = RequestInit::new();
-    options.set_signal(Some(&cancel.abort_signal()?));
-    let response: Response = JsFuture::from(window.fetch_with_str_and_init(url, &options))
-        .await?
-        .dyn_into()?;
-    if !response.ok() {
-        return Err(FetchError::Status {
-            url: url.to_owned(),
-            status: response.status(),
-        });
-    }
-    JsFuture::from(response.text()?)
-        .await?
-        .as_string()
-        .ok_or_else(|| JsValue::from_str("Fetch returned a non-text body").into())
 }

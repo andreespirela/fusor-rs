@@ -1,5 +1,5 @@
 //! Browser executor bindings: `read` and `resource` run loads with `spawn_local`.
-use crate::{CancellationToken, Resource};
+use crate::{AsyncValue, CancellationToken, Resource};
 use fusor::OwnerHandle;
 use std::future::Future;
 
@@ -8,14 +8,14 @@ pub fn read<K, T, E, F>(
     owner: &OwnerHandle,
     key: impl Fn() -> K + 'static,
     load: impl Fn(K, CancellationToken) -> F + 'static,
-) -> crate::AsyncValue<K, T, E>
+) -> AsyncValue<K, T, E>
 where
     K: Clone + PartialEq + 'static,
     T: 'static,
     E: std::fmt::Display + 'static,
     F: Future<Output = Result<T, E>> + 'static,
 {
-    crate::AsyncValue::new(owner, key, load, wasm_bindgen_futures::spawn_local)
+    AsyncValue::new(owner, key, load, wasm_bindgen_futures::spawn_local)
 }
 
 /// Create a [`Resource`] whose loads run with `wasm_bindgen_futures::spawn_local`.

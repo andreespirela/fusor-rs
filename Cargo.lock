@@ -436,6 +436,7 @@ dependencies = [
  "fusor-components",
  "fusor-core",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

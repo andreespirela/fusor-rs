@@ -5,7 +5,6 @@
 //! Only the synchronous key function tracks signals, never the async loader.
 mod cancellation;
 mod value;
-use cancellation::InFlight;
 pub use cancellation::{CancelRegistration, CancellationSource, CancellationToken};
 pub use fusor::coherence::{AsyncBoundary, BoundaryStatus};
 pub use value::{AsyncRead, AsyncValue};
@@ -14,9 +13,10 @@ pub mod browser;
 #[cfg(feature = "browser")]
 pub mod fetch;
 
+use cancellation::InFlight;
 use derive_where::derive_where;
 use fusor::{Effect, OwnerHandle, Registration, Signal, batch, effect, signal, untrack};
-use futures_util::future::{Abortable, FutureExt, LocalBoxFuture};
+use futures_util::future::LocalBoxFuture;
 use std::{
     cell::{Cell, RefCell},
     future::Future,
@@ -61,25 +61,37 @@ impl<K, T, E> ResourceState<K, T, E> {
     }
 }
 
+// Shared by `Resource` and `AsyncValue`.
 type Loader<K, T, E> = dyn Fn(K, CancellationToken) -> LocalBoxFuture<'static, Result<T, E>>;
 type Spawner = dyn Fn(LocalBoxFuture<'static, ()>);
+fn boxed_loader<K, T, E, F: Future<Output = Result<T, E>> + 'static>(
+    load: impl Fn(K, CancellationToken) -> F + 'static,
+) -> Rc<Loader<K, T, E>> {
+    Rc::new(move |key, cancel| Box::pin(load(key, cancel)))
+}
+/// Increment and return `counter`. Overflow is a bug, never a wraparound.
+fn increment(counter: &Cell<u64>, name: &str) -> u64 {
+    let next = counter
+        .get()
+        .checked_add(1)
+        .unwrap_or_else(|| panic!("{name} overflow"));
+    counter.set(next);
+    next
+}
+
 struct Inner<K, T, E> {
+    // Declared first: dropping `Inner` aborts and cancels the in-flight read
+    // before any other field drops.
+    in_flight: RefCell<Option<InFlight>>,
     owner: OwnerHandle,
     state: Signal<ResourceState<K, T, E>>,
     key: RefCell<Option<K>>,
     generation: Cell<u64>,
     disposed: Cell<bool>,
-    request: RefCell<Option<InFlight>>,
     subscription: RefCell<Option<Effect>>,
     registrations: RefCell<Vec<Registration>>,
     load: Rc<Loader<K, T, E>>,
     spawn: Box<Spawner>,
-}
-impl<K, T, E> Drop for Inner<K, T, E> {
-    fn drop(&mut self) {
-        // Cancel the in-flight read before the remaining fields drop.
-        self.request.get_mut().take();
-    }
 }
 
 /// A shared handle to one owned read, with no `Clone` bound on data or errors.
@@ -98,15 +110,15 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: 'static> Resource<K, T, E> {
         spawn: impl Fn(LocalBoxFuture<'static, ()>) + 'static,
     ) -> Self {
         let inner = Rc::new(Inner {
+            in_flight: RefCell::new(None),
             owner: owner.clone(),
             state: signal(ResourceState::Idle),
             key: RefCell::new(None),
             generation: Cell::new(0),
             disposed: Cell::new(false),
-            request: RefCell::new(None),
             subscription: RefCell::new(None),
             registrations: RefCell::new(Vec::new()),
-            load: Rc::new(move |key, cancel| Box::pin(load(key, cancel))),
+            load: boxed_loader(load),
             spawn: Box::new(spawn),
         });
         let weak = Rc::downgrade(&inner);
@@ -161,14 +173,9 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: 'static> Resource<K, T, E> {
 
 impl<K, T, E> Inner<K, T, E> {
     fn invalidate(&self) -> u64 {
-        let generation = self
-            .generation
-            .get()
-            .checked_add(1)
-            .expect("resource generation overflow");
-        self.generation.set(generation);
+        let generation = increment(&self.generation, "resource generation");
         // Dropping the in-flight read aborts it and cancels its token.
-        drop(self.request.take());
+        drop(self.in_flight.take());
         generation
     }
     fn dispose(&self) {
@@ -190,28 +197,34 @@ impl<K, T, E> Inner<K, T, E> {
     fn is_stopped(&self) -> bool {
         self.disposed.get() || self.owner.is_disposed()
     }
+    /// Only the latest generation publishes, and only while the owner is active.
     fn is_current(&self, generation: u64) -> bool {
         !self.disposed.get() && self.owner.is_active() && self.generation.get() == generation
     }
 }
 
-impl<K: Clone + PartialEq + 'static, T: 'static, E: 'static> Inner<K, T, E> {
+impl<K: Clone + 'static, T: 'static, E: 'static> Inner<K, T, E> {
     /// Load `next` unless it equals the current key.
-    fn set_key(self: &Rc<Self>, next: Option<K>) {
+    fn set_key(self: &Rc<Self>, next: Option<K>)
+    where
+        K: PartialEq,
+    {
         if self.is_stopped() || *self.key.borrow() == next {
             return;
         }
         let retired_key = self.key.replace(next);
-        self.reload();
+        self.restart();
         // Key destructors see the completed transition, including cancellation and
         // scheduling. Cancellation callbacks retain their existing pre-publication order.
         drop(retired_key);
     }
-    /// Cancel any in-flight read and load the current key again.
+    /// Cancel any in-flight read and load the current key again, unless stopped.
     fn reload(self: &Rc<Self>) {
-        if self.is_stopped() {
-            return;
+        if !self.is_stopped() {
+            self.restart();
         }
+    }
+    fn restart(self: &Rc<Self>) {
         let next = self.key.borrow().clone();
         batch(|| {
             let generation = self.invalidate();
@@ -230,23 +243,21 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: 'static> Inner<K, T, E> {
     }
     fn spawn_load(self: &Rc<Self>, key: K, generation: u64) {
         let previous = self.state.with_untracked(|state| state.data().cloned());
-        let (request, token, registration) = InFlight::start();
-        *self.request.borrow_mut() = Some(request);
-        self.publish(ResourceState::Loading {
+        let loading = ResourceState::Loading {
             key: key.clone(),
             previous: previous.clone(),
-        });
+        };
         let weak = Rc::downgrade(self);
         let load = self.load.clone();
-        let work = async move {
+        let (in_flight, work) = InFlight::start(move |token| async move {
             let result = load(key.clone(), token).await;
             let Some(inner) = weak.upgrade().filter(|i| i.is_current(generation)) else {
                 return;
             };
             // Remove completed handles before notifying subscribers. Notifications
             // may immediately dispose this resource or start another generation.
-            if let Some(request) = inner.request.take() {
-                request.complete();
+            if let Some(in_flight) = inner.in_flight.take() {
+                in_flight.complete();
             }
             let next = match result {
                 Ok(value) => ResourceState::Ready(Data {
@@ -262,7 +273,9 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: 'static> Inner<K, T, E> {
             inner.publish(next);
             // On success, the unused previous data is retired here,
             // after Ready has been published, never in an update closure.
-        };
-        (self.spawn)(Box::pin(Abortable::new(work, registration).map(drop)));
+        });
+        *self.in_flight.borrow_mut() = Some(in_flight);
+        self.publish(loading);
+        (self.spawn)(work);
     }
 }
