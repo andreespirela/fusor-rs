@@ -19,11 +19,11 @@ impl Card {
         let metrics = owner.context::<Metrics>().ok_or_else(|| JsValue::from_str("missing metrics"))?;
         let theme = owner.context::<Theme>().ok_or_else(|| JsValue::from_str("missing theme"))?;
         let load_metrics = metrics.clone();
-        let read = resource(&owner, || Some(()), move |_, request| {
+        let read = resource(&owner, || Some(()), move |_, cancel| {
             increment(&load_metrics.started);
             let lifetime = PendingRead(load_metrics.clone());
             let metrics = load_metrics.clone();
-            let cancelled = request.on_cancel(move || increment(&metrics.cancelled));
+            let cancelled = cancel.on_cancel(move || increment(&metrics.cancelled));
             async move {
                 let (_lifetime, _cancelled) = (lifetime, cancelled);
                 std::future::pending::<Result<(), JsValue>>().await

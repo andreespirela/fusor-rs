@@ -1,5 +1,5 @@
 use fusor::{OwnerHandle, Signal, signal};
-use fusor_async::{Resource, ResourceState, browser::resource};
+use fusor_async::{Resource, ResourceState, browser::resource, fetch::get_text};
 use gloo_timers::future::TimeoutFuture;
 use std::{cell::Cell, rc::Rc};
 
@@ -18,7 +18,7 @@ impl Loading {
         let data = resource(
             &owner,
             move || Some(key.get()),
-            move |city, request| {
+            move |city, cancel| {
                 let fail = failure.replace(false);
                 async move {
                     // Demo-only latency. Real data still comes from an HTTP request.
@@ -26,12 +26,9 @@ impl Loading {
                     if fail {
                         return Err("A simulated connection error. Try again.".into());
                     }
-                    request
-                        .get_text(&format!("/docs/demo-data/{city}.txt"))
+                    get_text(&format!("/docs/demo-data/{city}.txt"), &cancel)
                         .await
-                        .map_err(|error| {
-                            error.as_string().unwrap_or_else(|| "Request failed".into())
-                        })
+                        .map_err(|error| error.to_string())
                 }
             },
         );

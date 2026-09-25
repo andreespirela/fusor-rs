@@ -1,5 +1,8 @@
 use fusor::prelude::*;
-use fusor_async::{AsyncValue, browser};
+use fusor_async::{
+    AsyncValue, browser,
+    fetch::{self, FetchError},
+};
 use gloo_timers::future::TimeoutFuture;
 
 #[derive(FromInputs)]
@@ -9,7 +12,7 @@ pub struct AsyncData {
 }
 
 struct IssueField {
-    value: AsyncValue<u32, String, String>,
+    value: AsyncValue<u32, String, FetchError>,
     field: &'static str,
 }
 
@@ -27,13 +30,11 @@ impl FromInputs for IssueField {
         let value = browser::read(
             &owner,
             move || inputs.issue.get(),
-            move |issue, request| async move {
+            move |issue, cancel| async move {
                 TimeoutFuture::new(inputs.delay).await;
-                request
-                    .get_text(&format!("./data/issues/{issue}-{field}.txt"))
+                fetch::get_text(&format!("./data/issues/{issue}-{field}.txt"), &cancel)
                     .await
                     .map(|value| value.trim().to_owned())
-                    .map_err(|error| format!("{error:?}"))
             },
         );
         Ok(Self { value, field })

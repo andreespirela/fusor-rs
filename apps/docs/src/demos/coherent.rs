@@ -1,5 +1,8 @@
 use fusor::{OwnerHandle, Signal, signal};
-use fusor_async::{AsyncBoundary, AsyncValue, BoundaryStatus, browser};
+use fusor_async::{
+    AsyncBoundary, AsyncValue, BoundaryStatus, browser,
+    fetch::{self, FetchError},
+};
 use gloo_timers::future::TimeoutFuture;
 
 pub struct Coherent {
@@ -30,7 +33,7 @@ impl Coherent {
 }
 
 struct ProductRead {
-    value: AsyncValue<String, String, String>,
+    value: AsyncValue<String, String, FetchError>,
     label: &'static str,
 }
 
@@ -45,12 +48,9 @@ impl ProductRead {
         let value = browser::read(
             &owner,
             move || product.get(),
-            move |key, request| async move {
+            move |key, cancel| async move {
                 TimeoutFuture::new(delay).await;
-                request
-                    .get_text(&format!("/docs/demo-data/{key}-{field}.txt"))
-                    .await
-                    .map_err(|error| error.as_string().unwrap_or_else(|| "Request failed".into()))
+                fetch::get_text(&format!("/docs/demo-data/{key}-{field}.txt"), &cancel).await
             },
         );
         Self { value, label }

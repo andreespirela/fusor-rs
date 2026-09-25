@@ -2,7 +2,7 @@
 //! Disposing an action suppresses local publication, never promises server rollback.
 use fusor::{OwnerHandle, Registration, Signal, batch, signal, untrack};
 use fusor_async::CancellationSource;
-pub use fusor_async::RequestContext;
+pub use fusor_async::CancellationToken;
 use futures_util::future::{AbortHandle, Abortable, LocalBoxFuture};
 use std::{
     any::Any,
@@ -124,7 +124,7 @@ impl<C> std::fmt::Display for DispatchError<C> {
 }
 impl<C: std::fmt::Debug> std::error::Error for DispatchError<C> {}
 
-type Loader<C, T, E> = dyn Fn(Rc<C>, RequestContext) -> LocalBoxFuture<'static, Outcome<T, E>>;
+type Loader<C, T, E> = dyn Fn(Rc<C>, CancellationToken) -> LocalBoxFuture<'static, Outcome<T, E>>;
 type Spawner = dyn Fn(LocalBoxFuture<'static, ()>);
 struct Request {
     abort: AbortHandle,
@@ -194,7 +194,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
     pub fn new<F: Future<Output = Outcome<T, E>> + 'static>(
         owner: &OwnerHandle,
         _policy: SavePolicy,
-        load: impl Fn(Rc<C>, RequestContext) -> F + 'static,
+        load: impl Fn(Rc<C>, CancellationToken) -> F + 'static,
         spawn: impl Fn(LocalBoxFuture<'static, ()>) + 'static,
     ) -> Self {
         let inner = Rc::new(Inner {
@@ -206,7 +206,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
             state: signal(ActionState::empty(Status::Idle)),
             request: RefCell::new(None),
             registration: RefCell::new(None),
-            load: Rc::new(move |command, context| Box::pin(load(command, context))),
+            load: Rc::new(move |command, cancel| Box::pin(load(command, cancel))),
             spawn: Rc::new(spawn),
         });
         let weak = Rc::downgrade(&inner);
@@ -300,7 +300,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
         let id = submission.id;
         self.0.busy.set(true);
         let cancellation = CancellationSource::default();
-        let context = cancellation.context();
+        let token = cancellation.token();
         let (abort, registration) = AbortHandle::new_pair();
         *self.0.request.borrow_mut() = Some(Request {
             abort,
@@ -324,7 +324,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
                 return;
             };
             drop(inner);
-            let outcome = untrack(|| load(submission.command.clone(), context)).await;
+            let outcome = untrack(|| load(submission.command.clone(), token)).await;
             let Some(inner) = weak.upgrade().filter(|inner| current(inner, id)) else {
                 return;
             };

@@ -130,14 +130,24 @@
     "label": "get_text · abortable HTTP GET"
   },
   {
-    "token": "RequestContext",
+    "token": "FetchError",
+    "href": "/docs/async-data/resource#request",
+    "label": "FetchError · get_text errors"
+  },
+  {
+    "token": "abort_signal",
+    "href": "/docs/async-data/resource#request",
+    "label": "abort_signal · cancel your own Fetch"
+  },
+  {
+    "token": "CancellationToken",
     "href": "/docs/async-data/resource#cancel",
-    "label": "RequestContext · cancellation"
+    "label": "CancellationToken · cancellation"
   },
   {
     "token": "on_cancel",
     "href": "/docs/async-data/resource#cancel",
-    "label": "RequestContext · cancellation"
+    "label": "CancellationToken · cancellation"
   },
   {
     "token": "browser::read",

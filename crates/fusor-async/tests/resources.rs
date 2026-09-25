@@ -411,3 +411,54 @@ fn retired_key_can_refresh_after_the_transition_releases_its_borrow() {
     assert!(!armed.get());
     pool.run_until_stalled();
 }
+
+#[test]
+fn completed_reads_never_cancel_their_token() {
+    let mut pool = LocalPool::new();
+    let owner = Owner::new();
+    owner.commit();
+    let key = signal(1);
+    let cancelled = Rc::new(Cell::new(0));
+    // Keep every registration alive so a late cancellation would be observed.
+    let registrations = Rc::new(RefCell::new(Vec::new()));
+    let r = Resource::new(
+        &owner.handle(),
+        {
+            let key = key.clone();
+            move || Some(key.get())
+        },
+        {
+            let cancelled = cancelled.clone();
+            let registrations = registrations.clone();
+            move |key, cancel| {
+                let cancelled = cancelled.clone();
+                let registration = cancel.on_cancel(move || cancelled.set(cancelled.get() + 1));
+                registrations.borrow_mut().push(registration);
+                async move {
+                    if key == 3 {
+                        pending::<()>().await;
+                    }
+                    Ok::<_, ()>(key)
+                }
+            }
+        },
+        spawner(&pool),
+    );
+    pool.run_until_stalled();
+    assert_eq!(*r.get().data().unwrap().value, 1);
+    r.refresh();
+    pool.run_until_stalled();
+    key.set(2);
+    pool.run_until_stalled();
+    assert_eq!(*r.get().data().unwrap().value, 2);
+    assert_eq!(cancelled.get(), 0);
+    // A pending read is still cancelled, so the counter does observe cancellation.
+    key.set(3);
+    pool.run_until_stalled();
+    r.refresh();
+    assert_eq!(cancelled.get(), 1);
+    pool.run_until_stalled();
+    r.dispose();
+    assert_eq!(cancelled.get(), 2);
+    assert_eq!(registrations.borrow().len(), 5);
+}

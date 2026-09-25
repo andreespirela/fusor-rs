@@ -104,6 +104,28 @@ try {
   await waitRequests(19);
   complete("retained", "value");
   await expect(page.locator("#retained-value")).toHaveText("retained-value");
+
+  // get_text reports cancellation the same way before and during a request.
+  await page.evaluate(async () => {
+    const script = document.querySelector('script[type="module"]');
+    window.api = await import(new URL("./pkg/app.js", script.src));
+  });
+  const sent = requests.length;
+  assert.equal(await page.evaluate(() => window.api.probe_get_text("/api/probe/before", true)), "cancelled: request cancelled");
+  assert.equal(requests.length, sent);
+  await page.evaluate(() => { window.during = window.api.probe_get_text("/api/probe/during", false); });
+  await waitRequests(sent + 1);
+  await page.evaluate(() => window.api.cancel_probe());
+  assert.equal(await page.evaluate(() => window.during), "cancelled: request cancelled");
+  await expect.poll(() => requests.at(-1).closed).toBe(true);
+  await page.evaluate(() => { window.missing = window.api.probe_get_text("/api/probe/missing", false); });
+  await waitRequests(sent + 2);
+  complete("probe", "missing", 404);
+  assert.equal(await page.evaluate(() => window.missing), "status: GET /api/probe/missing: HTTP 404");
+  await page.evaluate(() => { window.found = window.api.probe_get_text("/api/probe/found", false); });
+  await waitRequests(sent + 3);
+  complete("probe", "found");
+  assert.equal(await page.evaluate(() => window.found), "ok: probe-found");
   await page.evaluate(async () => {
     const script = document.querySelector('script[type="module"]');
     const api = await import(new URL("./pkg/app.js", script.src));
@@ -111,7 +133,7 @@ try {
   });
   await expect.poll(() => pending.every(entry => entry.closed)).toBe(true);
   assert.deepEqual(errors, []);
-  console.log("PASS Async/Await: independent completion, automatic grouping, named/nested values, events, Children, error retention, recovery, identity, cancellation and remount");
+  console.log("PASS Async/Await: independent completion, automatic grouping, named/nested values, events, Children, error retention, recovery, identity, cancellation, remount and get_text outcomes");
 } finally {
   await browser?.close();
   server.closeAllConnections();

@@ -1,7 +1,7 @@
 //! Deterministic helpers for application tests. No browser or wall-clock sleeps.
 //! These control framework futures, not the browser's event loop or foreign JS.
 use fusor::{Cleanup, OwnerHandle, Registration};
-use fusor_async::RequestContext;
+use fusor_async::CancellationToken;
 use futures_channel::oneshot;
 use futures_executor::LocalPool;
 use futures_util::{future::LocalBoxFuture, task::LocalSpawnExt};
@@ -94,12 +94,12 @@ impl<K: 'static, T: 'static, E: 'static> ControlledLoader<K, T, E> {
     pub fn load(
         &self,
         key: K,
-        context: RequestContext,
+        cancel: CancellationToken,
     ) -> impl Future<Output = Result<T, E>> + 'static + use<K, T, E> {
         let (sender, receiver) = oneshot::channel();
         self.0.queue.borrow_mut().push_back(PendingRequest {
             key,
-            context: context.clone(),
+            cancel: cancel.clone(),
             sender,
         });
         let mut counts = self.counts();
@@ -113,7 +113,7 @@ impl<K: 'static, T: 'static, E: 'static> ControlledLoader<K, T, E> {
             requests.counts.set(counts);
         });
         let requests = self.0.clone();
-        let cancellation = context.on_cancel(move || {
+        let cancellation = cancel.on_cancel(move || {
             let mut counts = requests.counts.get();
             counts.cancelled += 1;
             requests.counts.set(counts);
@@ -134,12 +134,12 @@ impl<K: 'static, T: 'static, E: 'static> ControlledLoader<K, T, E> {
 /// One requested key. Retain this handle to complete requests in any order.
 pub struct PendingRequest<K, T, E> {
     pub key: K,
-    context: RequestContext,
+    cancel: CancellationToken,
     sender: oneshot::Sender<Result<T, E>>,
 }
 impl<K, T, E> PendingRequest<K, T, E> {
     pub fn is_cancelled(&self) -> bool {
-        self.context.is_cancelled()
+        self.cancel.is_cancelled()
     }
     /// Returns the supplied result if the future has already been dropped.
     /// Successfully queuing a result does not mean a disposed owner can publish it.

@@ -28,7 +28,7 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Entry<K, T, E> {
         let resource = Resource::new(
             &owner.handle(),
             move || input.get(),
-            move |key, context| load(key, context),
+            move |key, cancel| load(key, cancel),
             move |future| spawn(future),
         );
         let entry = Rc::new(Self {

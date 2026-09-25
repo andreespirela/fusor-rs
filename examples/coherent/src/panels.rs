@@ -1,24 +1,22 @@
 use fusor::{Effect, OwnerHandle, Signal, effect};
-use fusor_async::{AsyncValue, browser};
+use fusor_async::{
+    AsyncValue, browser,
+    fetch::{self, FetchError},
+};
 
 fn data(
     owner: &OwnerHandle,
     selected: Signal<String>,
     kind: &'static str,
-) -> AsyncValue<String, String, String> {
+) -> AsyncValue<String, String, FetchError> {
     browser::read(
         owner,
         move || selected.get(),
-        move |key, context| async move {
-            context
-                .get_text(&format!("/api/{kind}/{key}"))
-                .await
-                .map_err(|error| format!("{error:?}"))
-        },
+        move |key, cancel| async move { fetch::get_text(&format!("/api/{kind}/{key}"), &cancel).await },
     )
 }
 pub struct Price {
-    quote: AsyncValue<String, String, String>,
+    quote: AsyncValue<String, String, FetchError>,
 }
 impl Price {
     pub fn new(owner: OwnerHandle, selected: Signal<String>) -> Self {
@@ -28,7 +26,7 @@ impl Price {
     }
 }
 pub struct Stock {
-    stock: AsyncValue<String, String, String>,
+    stock: AsyncValue<String, String, FetchError>,
 }
 impl Stock {
     pub fn new(owner: OwnerHandle, selected: Signal<String>) -> Self {

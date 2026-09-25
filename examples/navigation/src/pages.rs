@@ -1,7 +1,11 @@
 //! Page state and data loading stay in ordinary Rust.
 use crate::routes::{BASE, Page};
 use fusor::prelude::*;
-use fusor_async::{Resource, ResourceState, browser::resource};
+use fusor_async::{
+    Resource, ResourceState,
+    browser::resource,
+    fetch::{FetchError, get_text},
+};
 use fusor_router::Location;
 use wasm_bindgen::JsValue;
 
@@ -16,7 +20,7 @@ impl Default for Home {
     }
 }
 pub struct Preview {
-    data: Resource<u32, String, JsValue>,
+    data: Resource<u32, String, FetchError>,
 }
 impl Preview {
     pub fn new(owner: OwnerHandle, item: fusor::Memo<u32>) -> Self {
@@ -24,7 +28,7 @@ impl Preview {
             data: resource(
                 &owner,
                 move || Some(item.get()),
-                |id, request| async move { request.get_text(&format!("{BASE}data/{id}.txt")).await },
+                |id, cancel| async move { get_text(&format!("{BASE}data/{id}.txt"), &cancel).await },
             ),
         }
     }
@@ -38,7 +42,7 @@ impl Preview {
 }
 pub struct NotFound;
 pub struct Metadata {
-    data: Resource<(), String, JsValue>,
+    data: Resource<(), String, FetchError>,
 }
 impl Metadata {
     pub fn new(owner: OwnerHandle) -> Self {
@@ -46,7 +50,7 @@ impl Metadata {
             data: resource(
                 &owner,
                 || Some(()),
-                |_, request| async move { request.get_text(&format!("{BASE}data/5.txt")).await },
+                |_, cancel| async move { get_text(&format!("{BASE}data/5.txt"), &cancel).await },
             ),
         }
     }
@@ -59,7 +63,7 @@ impl Metadata {
     }
 }
 pub struct Article {
-    pub data: Resource<(u32, String), String, JsValue>,
+    pub data: Resource<(u32, String), String, FetchError>,
     pub draft: Signal<String>,
     metadata_visible: Signal<bool>,
 }
@@ -76,11 +80,9 @@ impl Article {
                     _ => None,
                 }
             },
-            |(id, revision), request| async move {
+            |(id, revision), cancel| async move {
                 let query = fusor_router::encode_query([("revision", revision.as_str())]);
-                request
-                    .get_text(&format!("{BASE}data/{id}.txt?{query}"))
-                    .await
+                get_text(&format!("{BASE}data/{id}.txt?{query}"), &cancel).await
             },
         );
         Self {
@@ -94,11 +96,9 @@ impl Article {
             ResourceState::Idle => "Idle".into(),
             ResourceState::Loading { key, .. } => format!("Loading article {} ({})", key.0, key.1),
             ResourceState::Ready(data) => format!("Ready article {} ({})", data.key.0, data.key.1),
-            ResourceState::Error { key, error, .. } => format!(
-                "Article {} failed: {}",
-                key.0,
-                error.as_string().unwrap_or_default()
-            ),
+            ResourceState::Error { key, error, .. } => {
+                format!("Article {} failed: {error}", key.0)
+            }
             ResourceState::Disposed => "Disposed".into(),
         })
     }

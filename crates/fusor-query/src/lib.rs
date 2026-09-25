@@ -12,11 +12,11 @@ pub use state::{CacheInfo, Freshness, QueryOptions, QueryState};
 
 use entry::Entry;
 use fusor::{Owner, OwnerHandle, Registration, Signal, batch, signal, untrack};
-use fusor_async::RequestContext;
+use fusor_async::CancellationToken;
 use futures_util::future::LocalBoxFuture;
 use std::{cell::RefCell, collections::BTreeMap, future::Future, rc::Rc, time::Duration};
 
-type Loader<K, T, E> = dyn Fn(K, RequestContext) -> LocalBoxFuture<'static, Result<T, E>>;
+type Loader<K, T, E> = dyn Fn(K, CancellationToken) -> LocalBoxFuture<'static, Result<T, E>>;
 type Spawner = dyn Fn(LocalBoxFuture<'static, ()>);
 type Entries<K, T, E> = BTreeMap<K, Rc<Entry<K, T, E>>>;
 struct Inner<K: Clone + Ord + 'static, T: 'static, E: 'static> {
@@ -46,7 +46,7 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> QueryClient<K, T, E> {
     pub fn new<F: Future<Output = Result<T, E>> + 'static>(
         parent: &OwnerHandle,
         options: QueryOptions,
-        load: impl Fn(K, RequestContext) -> F + 'static,
+        load: impl Fn(K, CancellationToken) -> F + 'static,
         spawn: impl Fn(LocalBoxFuture<'static, ()>) + 'static,
         clock: impl Fn() -> Duration + 'static,
     ) -> Self {
@@ -187,7 +187,7 @@ pub mod browser {
     pub fn client<K, T, E, F>(
         parent: &OwnerHandle,
         options: QueryOptions,
-        load: impl Fn(K, RequestContext) -> F + 'static,
+        load: impl Fn(K, CancellationToken) -> F + 'static,
     ) -> QueryClient<K, T, E>
     where
         K: Clone + Ord + 'static,
