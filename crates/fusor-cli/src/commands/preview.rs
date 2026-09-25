@@ -88,10 +88,10 @@ fn serve_site(cx: &Context, root: &Path, site: &SiteManifest, port: u16, open: b
     })
 }
 
-/// `dist` is the documented default for a host with no Cargo.toml at all.
+/// A host with no Cargo.toml at all uses the default application output.
 fn configured_output(cx: &Context) -> Result<PathBuf> {
     let Some(candidate) = select::from_filesystem(cx)? else {
-        return Ok(PathBuf::from("dist"));
+        return Ok(fusor_build::app::AppConfig::default().output);
     };
     let config = fusor_build::app::AppConfig::load(&candidate.manifest).map_err(|error| {
         Error::project(format!(

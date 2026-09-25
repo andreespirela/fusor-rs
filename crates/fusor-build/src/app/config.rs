@@ -6,35 +6,72 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-/// `[package.metadata.fusor]` in the application's Cargo manifest.
+/// The entry document's source name. Source names are part of the artifact contract.
+const ENTRY_NAME: &str = "app";
+/// Discovered templates are named by this prefix and their package-relative path.
+const DISCOVERED_PREFIX: char = '@';
+
+/// How a source joined the application.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SourceKind {
+    Entry,
+    /// Registered under `[package.metadata.fusor.components]`.
+    Component,
+    /// Found under a template directory.
+    Discovered,
+}
+
+impl SourceKind {
+    pub(crate) fn of(name: &str) -> Self {
+        if name == ENTRY_NAME {
+            Self::Entry
+        } else if name.starts_with(DISCOVERED_PREFIX) {
+            Self::Discovered
+        } else {
+            Self::Component
+        }
+    }
+}
+
+/// `[package.metadata.fusor]` in the application's Cargo manifest. Omitted
+/// fields take their value from [`AppConfig::default`].
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct AppConfig {
     pub delivery: Option<DeliveryConfig>,
-    #[serde(default = "entry")]
     pub entry: PathBuf,
     pub assets: Option<PathBuf>,
     /// Optional executable and arguments, run in the package before publishing
     /// assets. No shell expansion or implicit dependency installation.
-    #[serde(default)]
     pub assets_build: Vec<String>,
     /// Disable compatible refresh when custom build logic reads HTML/assets.
-    #[serde(default = "dev_refresh")]
     pub dev_refresh: bool,
-    #[serde(default = "output")]
     pub output: PathBuf,
-    #[serde(default = "base_path")]
     pub base_path: String,
     /// Application-relative prefixes allowed to receive index.html on an HTML
-    /// document request. Empty by default; static asset requests still return 404.
-    #[serde(default)]
+    /// document request. Static asset requests still return 404.
     pub history_fallback: Vec<String>,
-    #[serde(default)]
     pub components: BTreeMap<String, PathBuf>,
     /// Package-relative directories searched recursively for reusable HTML.
     /// An empty list disables discovery; explicit registrations remain supported.
-    #[serde(default = "templates")]
     pub templates: Vec<PathBuf>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            delivery: None,
+            entry: "web/index.html".into(),
+            assets: None,
+            assets_build: Vec::new(),
+            dev_refresh: true,
+            output: "dist".into(),
+            base_path: "/".into(),
+            history_fallback: Vec::new(),
+            components: BTreeMap::new(),
+            templates: vec!["web/components".into()],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -55,22 +92,6 @@ pub struct DeliveryUnit {
     pub package: String,
     #[serde(default)]
     pub features: Vec<String>,
-}
-
-fn entry() -> PathBuf {
-    "web/index.html".into()
-}
-fn templates() -> Vec<PathBuf> {
-    vec!["web/components".into()]
-}
-fn output() -> PathBuf {
-    "dist".into()
-}
-fn base_path() -> String {
-    "/".into()
-}
-fn dev_refresh() -> bool {
-    true
 }
 
 impl AppConfig {
@@ -179,7 +200,7 @@ impl AppConfig {
         for name in self.components.keys() {
             // Restrict module names to portable snake_case; rustc owns all types
             // and imports *inside* these modules.
-            if name == "app" || !valid_module_name(name) {
+            if name == ENTRY_NAME || !valid_module_name(name) {
                 return Err(format!("invalid component module {name:?}; use a non-keyword snake_case Rust identifier other than 'app'").into());
             }
         }
@@ -266,7 +287,10 @@ impl AppConfig {
             if seen.insert(path.canonicalize()?) {
                 let relative = path.strip_prefix(&root)?.to_owned();
                 sources.push((
-                    format!("@{}", relative.to_string_lossy().replace('\\', "/")),
+                    format!(
+                        "{DISCOVERED_PREFIX}{}",
+                        relative.to_string_lossy().replace('\\', "/")
+                    ),
                     relative,
                 ));
             }
@@ -276,7 +300,7 @@ impl AppConfig {
 
     /// Entry first, then explicitly registered modules in deterministic order.
     pub fn sources(&self) -> impl Iterator<Item = (&str, &Path)> {
-        std::iter::once(("app", self.entry.as_path())).chain(
+        std::iter::once((ENTRY_NAME, self.entry.as_path())).chain(
             self.components
                 .iter()
                 .map(|(name, path)| (name.as_str(), path.as_path())),

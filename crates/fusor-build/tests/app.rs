@@ -67,10 +67,14 @@ fn external_registration_tracks_source_and_keeps_native_module_ownership() {
             .unwrap()
             .contains("pub mod app")
     );
-    for src in ["../src/missing.rs", "../Cargo.toml"] {
-        fs::write(&path, html.replace("../src/app.rs", src)).unwrap();
-        assert!(generate_app().is_err());
-    }
+    fs::write(&path, html.replace("../src/app.rs", "../src/missing.rs")).unwrap();
+    let missing = generate_app().unwrap_err().to_string();
+    assert!(
+        missing.contains("index.html:1:1: external Rust source "),
+        "{missing}"
+    );
+    fs::write(&path, html.replace("../src/app.rs", "../Cargo.toml")).unwrap();
+    assert!(generate_app().is_err());
     fs::create_dir(dir.path().join("dist")).unwrap();
     fs::write(dir.path().join("dist/generated.rs"), rust).unwrap();
     fs::write(&path, html.replace("../src/app.rs", "../dist/generated.rs")).unwrap();
