@@ -1,9 +1,12 @@
 use fusor::{OwnerHandle, Signal};
-use fusor_async::{Resource, ResourceState, browser::resource};
-use wasm_bindgen::JsValue;
+use fusor_async::{
+    Resource, ResourceState,
+    browser::resource,
+    fetch::{FetchError, get_text},
+};
 
 pub struct Reader {
-    data: Resource<u32, String, JsValue>,
+    data: Resource<u32, String, FetchError>,
 }
 
 impl Reader {
@@ -11,7 +14,7 @@ impl Reader {
         let data = resource(
             &owner,
             move || Some(selected_id.get()),
-            |id, request| async move { request.get_text(&format!("/data/{id}.txt")).await },
+            |id, cancel| async move { get_text(&format!("/data/{id}.txt"), &cancel).await },
         );
         Self { data }
     }
@@ -22,7 +25,7 @@ impl Reader {
             ResourceState::Loading { key, .. } => format!("Loading issue {key}…"),
             ResourceState::Ready(data) => format!("Loaded issue {}", data.key),
             ResourceState::Error { key, error, .. } => {
-                format!("Could not load issue {key}: {error:?}")
+                format!("Could not load issue {key}: {error}")
             }
             ResourceState::Disposed => "Reader closed".into(),
         })

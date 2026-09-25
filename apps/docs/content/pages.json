@@ -2077,8 +2077,8 @@
       {
         "id": "resource-call",
         "title": "First, read the three arguments",
-        "body": "`browser::resource` comes from `fusor-async`. Its three arguments answer three questions: whose lifetime owns this request, which key should load, and how should it load?\n\nHere `owner` is a parameter of `Reader::new`. The framework first passes the child’s `OwnerHandle` to `Reader::from_inputs`, which forwards it to `Reader::new(owner, inputs.selected_id)`. Borrowing it as `&owner` ties the resource to the reader’s lifetime.\n\nThe resource evaluates your key function, then passes its result and a cancellation context to your loader. The file imports `browser::resource`, so the example can call it simply `resource(...)`.",
-        "code": "use fusor_async::browser;\n\n// Inside Reader::new(owner: OwnerHandle, selected_id: Signal<u32>):\nlet data = browser::resource(\n    &owner,                              // whose lifetime?\n    move || Some(selected_id.get()),     // which request?\n    |id, request| async move {            // how to load it?\n        request.get_text(&format!(\"/data/{id}.txt\")).await\n    },\n);",
+        "body": "`browser::resource` comes from `fusor-async`. Its three arguments answer three questions: whose lifetime owns this request, which key should load, and how should it load?\n\nHere `owner` is a parameter of `Reader::new`. The framework first passes the child’s `OwnerHandle` to `Reader::from_inputs`, which forwards it to `Reader::new(owner, inputs.selected_id)`. Borrowing it as `&owner` ties the resource to the reader’s lifetime.\n\nThe resource evaluates your key function, then passes its result and a `CancellationToken` to your loader. The file imports `browser::resource` and `fetch::get_text`, so the example can call them simply `resource(...)` and `get_text(...)`.",
+        "code": "use fusor_async::{browser, fetch};\n\n// Inside Reader::new(owner: OwnerHandle, selected_id: Signal<u32>):\nlet data = browser::resource(\n    &owner,                              // whose lifetime?\n    move || Some(selected_id.get()),     // which request?\n    |id, cancel| async move {            // how to load it?\n        fetch::get_text(&format!(\"/data/{id}.txt\"), &cancel).await\n    },\n);",
         "language": "Rust · inside Reader::new",
         "note": "",
         "links": [
@@ -2095,7 +2095,7 @@
       {
         "id": "resource",
         "title": "Create and read a Resource in one component",
-        "body": "`Resource<K, T, E>` describes three types: the request key, successful value, and error. This reader uses `u32`, `String`, and `JsValue`.\n\nThe key closure reads `selected_id` synchronously, so changes to that signal start a new request. The loader receives the selected ID and a cancellation context named `request`. Work begins after the component’s owner activates.\n\nThe `status()` and `text()` methods read the current resource state with `.with()`. Calling them from HTML tracks updates. Their `&self` parameter borrows the reader instead of taking ownership; handles such as signals and resources can still update their shared state through that reference.",
+        "body": "`Resource<K, T, E>` describes three types: the request key, successful value, and error. This reader uses `u32`, `String`, and `FetchError`.\n\nThe key closure reads `selected_id` synchronously, so changes to that signal start a new request. The loader receives the selected ID and a `CancellationToken` named `cancel`. Work begins after the component’s owner activates.\n\nThe `status()` and `text()` methods read the current resource state with `.with()`. Calling them from HTML tracks updates. Their `&self` parameter borrows the reader instead of taking ownership; handles such as signals and resources can still update their shared state through that reference.",
         "code": "",
         "language": "src/reader.rs · complete file",
         "note": "The key function returns `Some(id)` to load a request, or `None` to disable the resource and clear previous data. Only this synchronous key function tracks changing inputs; signal reads inside the async loader do not become dependencies.\n\nThe loader’s `async move { … }` block creates a Rust future that owns its captured ID. Unlike creating a JavaScript promise, creating a Rust future does not start it. The framework runs it after the owner activates.",
@@ -2149,7 +2149,7 @@
       {
         "id": "cancel",
         "title": "Observe cancellation and stale-result protection",
-        "body": "With network throttling enabled, select issue 2 and then issue 1 before the request finishes. The obsolete attempt loses permission to publish, even if it completes late.\n\nThe supplied `request.get_text` also aborts the browser fetch. Toggle reader while a read is pending: disposal cancels that read.\n\nCancellation stops local work where supported; it cannot undo changes a server has already made.",
+        "body": "With network throttling enabled, select issue 2 and then issue 1 before the request finishes. The obsolete attempt loses permission to publish, even if it completes late.\n\n`get_text` also aborts the browser fetch. Toggle reader while a read is pending: disposal cancels that read.\n\nCancellation stops local work where supported; it cannot undo changes a server has already made.",
         "code": "",
         "language": "Rust",
         "note": "",
@@ -2163,7 +2163,7 @@
       {
         "id": "choose",
         "title": "Keep your data layer in your application",
-        "body": "A loader can return any compatible Rust future. You can use your own client, deserialize JSON, supply authentication, or read a cache.\n\nPut every changing request input in the synchronous key closure; use `request.on_cancel` when adapting a cancellable transport.\n\nUse `Resource` when this panel may publish independently. Use `AsyncValue` with a coherent region when several results and their labels must become visible together.",
+        "body": "A loader can return any compatible Rust future. You can use your own client, deserialize JSON, supply authentication, or read a cache.\n\nPut every changing request input in the synchronous key closure. To keep cancellation, pass `cancel.abort_signal()` to your own Fetch, or use `cancel.on_cancel` for other transports.\n\nUse `Resource` when this panel may publish independently. Use `AsyncValue` with a coherent region when several results and their labels must become visible together.",
         "code": "",
         "language": "Rust",
         "note": "",
@@ -2210,9 +2210,9 @@
         "id": "resource",
         "title": "browser::resource(owner, key, load)",
         "body": "This is a public function in `fusor_async::browser`, not a special compiler feature. It returns `Resource<K, T, E>` and uses the browser executor to run your Rust future.\n\nIt takes exactly three arguments: a borrowed `OwnerHandle`, a synchronous key function, and a loader function.\n\nIn this excerpt, `owner` is a parameter of `Reader::new`. `Reader::from_inputs` receives the child’s handle from the framework and passes it into that constructor; `&owner` borrows it for the resource.",
-        "code": "use fusor_async::browser;\n\n// Inside Reader::new(owner: OwnerHandle, selected_id: Signal<u32>):\nlet data = browser::resource(\n    &owner,                              // whose lifetime?\n    move || Some(selected_id.get()),     // which request?\n    |id, request| async move {            // how to load it?\n        request.get_text(&format!(\"/data/{id}.txt\")).await\n    },\n);",
+        "code": "use fusor_async::{browser, fetch};\n\n// Inside Reader::new(owner: OwnerHandle, selected_id: Signal<u32>):\nlet data = browser::resource(\n    &owner,                              // whose lifetime?\n    move || Some(selected_id.get()),     // which request?\n    |id, cancel| async move {            // how to load it?\n        fetch::get_text(&format!(\"/data/{id}.txt\"), &cancel).await\n    },\n);",
         "language": "Rust · constructor excerpt",
-        "note": "The result here is `Resource<u32, String, JsValue>`: request key, successful value, error. `&owner` borrows the handle; move lets the stored closure keep `selected_id`. The async feature is in a separate crate with `features = [\"browser\"]`.",
+        "note": "The result here is `Resource<u32, String, FetchError>`: request key, successful value, error. `&owner` borrows the handle; move lets the stored closure keep `selected_id`. The async feature is in a separate crate with `features = [\"browser\"]`.",
         "links": [
           {
             "href": "/docs/async-data#dependency",
@@ -2238,8 +2238,8 @@
       },
       {
         "id": "loader",
-        "title": "The loader receives key and RequestContext",
-        "body": "The third argument is your function. The framework passes the selected K and a `RequestContext` for this attempt; the function returns a `Future` yielding `Result<T, E>`.\n\n`Ok(value)` succeeds and `Err(error)` fails. Use your own HTTP client, parser, cache, authentication, or other async work.\n\nCaptured data and the future must be 'static; owned values and cloned handles usually satisfy this.",
+        "title": "The loader receives key and CancellationToken",
+        "body": "The third argument is your function. The framework passes the selected K and a `CancellationToken` for this attempt; the function returns a `Future` yielding `Result<T, E>`.\n\n`Ok(value)` succeeds and `Err(error)` fails. Use your own HTTP client, parser, cache, authentication, or other async work.\n\nCaptured data and the future must be 'static; owned values and cloned handles usually satisfy this.",
         "code": "",
         "language": "HTML",
         "note": "Work starts when the owner is active. A later key or disposal revokes the old attempt’s permission to publish. Stale results cannot overwrite the current result, even if the underlying transport cannot be stopped."
@@ -2268,16 +2268,16 @@
       },
       {
         "id": "request",
-        "title": "RequestContext and get_text(url)",
-        "body": "The loader’s request parameter belongs to one attempt. `request.get_text(&url).await` performs a browser GET, rejects non-2xx status codes, and returns the response body as `String` or an error as JsValue.\n\nIts `AbortController` stays registered through body reading, so replacing the key or removing the component aborts the fetch.",
-        "code": "",
-        "language": "HTML",
-        "note": "`get_text` is an optional convenience, not a required data layer. It does not deserialize JSON or add your app’s authentication policy. Browser Fetch caching rules still apply."
+        "title": "get_text and custom requests",
+        "body": "`fetch::get_text(&url, &cancel).await` performs a browser GET, rejects non-2xx status codes, and returns the response body as `String` or a `FetchError`. Its variants are `Cancelled`, `Status` and `Js`. `FetchError` implements `Display`, so it also works as the error of `browser::read`.\n\nFor other methods, headers or bodies, build the request with `web-sys` or your own client and pass `cancel.abort_signal()` as its signal. The signal lives as long as the attempt, so replacing the key or removing the component aborts the fetch, including the body read.",
+        "code": "let options = web_sys::RequestInit::new();\noptions.set_method(\"POST\");\noptions.set_signal(Some(&cancel.abort_signal()?));\noptions.set_body(&JsValue::from_str(&body));\nlet response = JsFuture::from(window.fetch_with_str_and_init(&url, &options)).await?;",
+        "language": "Rust · inside a loader",
+        "note": "`get_text` is an optional convenience, not a required data layer. It does not deserialize JSON or add your app’s authentication policy. Browser Fetch caching rules still apply.\n\nEnable the `web-sys` features your own request code calls, such as `RequestInit`."
       },
       {
         "id": "cancel",
         "title": "Adapt a cancellable client",
-        "body": "`request.is_cancelled()` checks whether the attempt was cancelled. `request.on_cancel(callback)` registers transport cleanup and returns a `CancelRegistration` guard; keep that guard alive for the request.\n\nDropping it unregisters the callback. Cancellation protects local work and publication; it cannot undo a server-side mutation.",
+        "body": "`cancel.is_cancelled()` checks whether the attempt was cancelled. `cancel.on_cancel(callback)` registers transport cleanup and returns a `CancelRegistration` guard; keep that guard alive for the request.\n\nDropping it unregisters the callback. Prefer `abort_signal()` for Fetch-based clients; use `on_cancel` for timers, sockets, and SDKs with their own cancel method.\n\nCancellation protects local work and publication; it cannot undo a server-side mutation.",
         "code": "",
         "language": "HTML",
         "note": "",
@@ -3326,7 +3326,7 @@
         "body": "`fusor add` adds the dependencies and browser features for `router`, `async`, `query`, `forms`, `actions` or `javascript`. It edits `Cargo.toml` through `cargo add`, so your comments and formatting stay. It never writes application source.\n\nEvery added package comes from the same place as `fusor`, whether that is the registry or a local checkout. If a step fails, the files the command wrote are restored, unless you edited them in the meantime.\n\n`--dry-run` prints the changes without making them.",
         "code": "fusor add router\nfusor add query --dry-run",
         "language": "Terminal",
-        "note": "`query` also adds `async`, because its API takes an async request context."
+        "note": "`query` also adds `async`, because its loaders receive a `CancellationToken` from `fusor-async`."
       },
       {
         "id": "check-build",

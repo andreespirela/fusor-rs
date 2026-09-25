@@ -1,14 +1,14 @@
 <script type="text/rust">
 use fusor::prelude::*;
+use fusor_async::fetch::FetchError;
 use fusor_query::{Query, QueryClient, QueryState};
 use fusor::{FromInputs, JsInputs};
-use wasm_bindgen::JsValue;
 
 pub struct Panel {
-    query: Query<u32, String, JsValue>, text: Signal<String>, count: Signal<u32>, fail: bool,
+    query: Query<u32, String, FetchError>, text: Signal<String>, count: Signal<u32>, fail: bool,
 }
 impl Panel {
-    pub fn new(owner: OwnerHandle, client: QueryClient<u32, String, JsValue>, selected: Signal<u32>, text: Signal<String>, count: Signal<u32>, fail: bool) -> Self {
+    pub fn new(owner: OwnerHandle, client: QueryClient<u32, String, FetchError>, selected: Signal<u32>, text: Signal<String>, count: Signal<u32>, fail: bool) -> Self {
         Self { query: client.observe(&owner, move || Some(selected.get())), text, count, fail }
     }
     fn label(&self) -> String {
@@ -23,7 +23,7 @@ impl Panel {
 }
 
 pub struct PanelInputs {
-    pub client: QueryClient<u32, String, JsValue>,
+    pub client: QueryClient<u32, String, FetchError>,
     pub selected: Signal<u32>,
     pub text: Signal<String>,
     pub count: Signal<u32>,

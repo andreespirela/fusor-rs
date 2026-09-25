@@ -19,8 +19,8 @@ struct App {
     clicked: Signal<String>,
     items: Signal<Vec<u32>>,
     boundary: fusor::coherence::AsyncBoundary,
-    read: fusor_async::AsyncValue<String, String, String>,
-    outer_read: fusor_async::AsyncValue<String, String, String>,
+    read: fusor_async::AsyncValue<String, String, fusor_async::fetch::FetchError>,
+    outer_read: fusor_async::AsyncValue<String, String, fusor_async::fetch::FetchError>,
 }
 #[cfg(target_arch = "wasm32")]
 impl App {
@@ -34,11 +34,8 @@ impl App {
                     Session::Authenticated { user } => user.name,
                     _ => "guest".into(),
                 },
-                move |name, request| async move {
-                    request
-                        .get_text(&format!("/api/{name}?kind={kind}"))
-                        .await
-                        .map_err(|error| format!("{error:?}"))
+                move |name, cancel| async move {
+                    fusor_async::fetch::get_text(&format!("/api/{name}?kind={kind}"), &cancel).await
                 },
             )
         };

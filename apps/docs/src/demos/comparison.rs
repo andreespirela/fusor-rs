@@ -1,10 +1,11 @@
 use fusor::{OwnerHandle, Signal, signal};
 use fusor_async::{
-    AsyncBoundary, AsyncValue, BoundaryStatus, RequestContext, Resource, ResourceState, browser,
+    AsyncBoundary, AsyncValue, BoundaryStatus, CancellationToken, Resource, ResourceState, browser,
+    fetch::{self, FetchError},
 };
 use gloo_timers::future::TimeoutFuture;
 
-type ProductResource = Resource<&'static str, String, String>;
+type ProductResource = Resource<&'static str, String, FetchError>;
 
 pub struct Comparison {
     selection: Signal<&'static str>,
@@ -17,15 +18,13 @@ pub struct Comparison {
 async fn load(
     product: &'static str,
     field: &'static str,
-    request: RequestContext,
-) -> Result<String, String> {
+    cancel: CancellationToken,
+) -> Result<String, FetchError> {
     // Artificial latency makes the publication order visible in this demo.
     TimeoutFuture::new(if field == "price" { 300 } else { 1_800 }).await;
-    request
-        .get_text(&format!("/docs/demo-data/{product}-{field}.txt"))
+    fetch::get_text(&format!("/docs/demo-data/{product}-{field}.txt"), &cancel)
         .await
         .map(|value| value.trim().to_owned())
-        .map_err(|error| error.as_string().unwrap_or_else(|| "Request failed".into()))
 }
 
 fn independent(
@@ -36,7 +35,7 @@ fn independent(
     browser::resource(
         owner,
         move || Some(selection.get()),
-        move |key, request| load(key, field, request),
+        move |key, cancel| load(key, field, cancel),
     )
 }
 
@@ -103,7 +102,7 @@ fn provenance(resource: &ProductResource) -> String {
 }
 
 struct CoherentField {
-    data: AsyncValue<&'static str, String, String>,
+    data: AsyncValue<&'static str, String, FetchError>,
     label: &'static str,
 }
 
@@ -118,7 +117,7 @@ impl CoherentField {
             data: browser::read(
                 &owner,
                 move || selection.get(),
-                move |key, request| load(key, field, request),
+                move |key, cancel| load(key, field, cancel),
             ),
             label,
         }

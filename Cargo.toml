@@ -43,6 +43,7 @@ wasm-bindgen-futures = "0.4.67"
 futures-util = { version = "0.3.34", default-features = false }
 futures-executor = "0.3.34"
 futures-channel = "0.3.34"
+derive-where = "1.7.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -90,16 +90,16 @@ fn disposing_from_pending_notification_never_starts_transport() {
 
 #[test]
 fn cancellation_source_completion_does_not_signal_abort() {
-    use fusor_std::actions::RequestContext;
-    // The shared cancellation context is compatible with native read adapters.
-    fn context(_: RequestContext) {}
+    use fusor_std::actions::CancellationToken;
+    // The shared cancellation token is compatible with native read adapters.
+    fn accept(_: CancellationToken) {}
     let source = fusor_async::CancellationSource::default();
-    let finished = source.context();
-    context(finished.clone());
+    let finished = source.token();
+    accept(finished.clone());
     source.complete();
     assert!(!finished.is_cancelled());
     let source = fusor_async::CancellationSource::default();
-    let cancelled = source.context();
+    let cancelled = source.token();
     drop(source);
     assert!(cancelled.is_cancelled());
 }

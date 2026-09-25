@@ -1,8 +1,12 @@
 use fusor::{OwnerHandle, Signal};
-use fusor_async::{AsyncValue, browser};
+use fusor_async::{
+    AsyncValue,
+    browser,
+    fetch::{self, FetchError},
+};
 
 pub struct Price {
-    quote: AsyncValue<String, String, String>,
+    quote: AsyncValue<String, String, FetchError>,
 }
 
 impl Price {
@@ -11,11 +15,8 @@ impl Price {
             quote: browser::read(
                 &owner,
                 move || product.get(),
-                |key, request| async move {
-                    request
-                        .get_text(&format!("/data/price/{key}.txt"))
-                        .await
-                        .map_err(|error| format!("{error:?}"))
+                |key, cancel| async move {
+                    fetch::get_text(&format!("/data/price/{key}.txt"), &cancel).await
                 },
             ),
         }
@@ -23,7 +24,7 @@ impl Price {
 }
 
 pub struct Stock {
-    stock: AsyncValue<String, String, String>,
+    stock: AsyncValue<String, String, FetchError>,
 }
 
 impl Stock {
@@ -32,11 +33,8 @@ impl Stock {
             stock: browser::read(
                 &owner,
                 move || product.get(),
-                |key, request| async move {
-                    request
-                        .get_text(&format!("/data/stock/{key}.txt"))
-                        .await
-                        .map_err(|error| format!("{error:?}"))
+                |key, cancel| async move {
+                    fetch::get_text(&format!("/data/stock/{key}.txt"), &cancel).await
                 },
             ),
         }

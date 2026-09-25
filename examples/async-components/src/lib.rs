@@ -1,12 +1,15 @@
 use fusor::prelude::*;
-use fusor_async::{AsyncValue, browser};
+use fusor_async::{
+    AsyncValue, browser,
+    fetch::{self, FetchError},
+};
 use wasm_bindgen::prelude::*;
 
 struct App {
     selected: Signal<String>,
     visible: Signal<bool>,
     clicked: Signal<String>,
-    retained: AsyncValue<String, String, String>,
+    retained: AsyncValue<String, String, FetchError>,
     show_retained: Signal<bool>,
 }
 impl App {
@@ -18,19 +21,14 @@ impl App {
             retained: browser::read(
                 &owner,
                 || "retained".to_owned(),
-                |_, request| async move {
-                    request
-                        .get_text("/api/retained/value")
-                        .await
-                        .map_err(|e| format!("{e:?}"))
-                },
+                |_, cancel| async move { fetch::get_text("/api/retained/value", &cancel).await },
             ),
             show_retained: signal(false),
         }
     }
 }
 struct ReadPanel {
-    read: AsyncValue<String, String, String>,
+    read: AsyncValue<String, String, FetchError>,
     clicked: Signal<String>,
 }
 struct ReadPanelInputs {
@@ -45,11 +43,8 @@ impl FromInputs for ReadPanel {
             read: browser::read(
                 &owner,
                 move || inputs.selected.get(),
-                move |key, request| async move {
-                    request
-                        .get_text(&format!("/api/{}/{key}", inputs.kind))
-                        .await
-                        .map_err(|e| format!("{e:?}"))
+                move |key, cancel| async move {
+                    fetch::get_text(&format!("/api/{}/{key}", inputs.kind), &cancel).await
                 },
             ),
             clicked: inputs.clicked,
@@ -59,7 +54,7 @@ impl FromInputs for ReadPanel {
 #[derive(FromInputs)]
 struct Retained {
     #[input]
-    value: AsyncValue<String, String, String>,
+    value: AsyncValue<String, String, FetchError>,
 }
 #[derive(FromInputs)]
 struct Panel;

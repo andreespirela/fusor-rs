@@ -1,11 +1,12 @@
 //! Application transport and protocol. The standard library owns no endpoint,
 //! serialization, HTTP status, domain validation or backend version policy.
-use fusor_std::actions::{Outcome, RequestContext};
+use fusor_std::actions::{CancellationToken, Outcome};
+use fusor_std::resources::fetch::get_text;
 use serde::{Deserialize, Serialize};
 use std::rc::Rc;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{AbortController, Request, RequestInit, Response};
+use web_sys::{Request, RequestInit, Response};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Project {
@@ -39,11 +40,10 @@ impl SaveError {
     }
 }
 
-pub async fn load(id: u64, request: RequestContext) -> Result<Project, String> {
-    let text = request
-        .get_text(&format!("/editor/api/projects/{id}"))
+pub async fn load(id: u64, cancel: CancellationToken) -> Result<Project, String> {
+    let text = get_text(&format!("/editor/api/projects/{id}"), &cancel)
         .await
-        .map_err(|error| SaveError::transport(error).message)?;
+        .map_err(|error| error.to_string())?;
     let project: Project = serde_json::from_str(&text).map_err(|error| error.to_string())?;
     if project.id != id {
         return Err("Unexpected project identity".into());
@@ -53,16 +53,16 @@ pub async fn load(id: u64, request: RequestContext) -> Result<Project, String> {
 
 pub async fn save(
     command: Rc<UpdateProject>,
-    context: RequestContext,
+    cancel: CancellationToken,
 ) -> Outcome<Project, SaveError> {
     async fn send(
         command: &UpdateProject,
-        context: RequestContext,
+        cancel: CancellationToken,
     ) -> Result<Outcome<Project, SaveError>, JsValue> {
-        let controller = AbortController::new()?;
         let options = RequestInit::new();
         options.set_method("POST");
-        options.set_signal(Some(&controller.signal()));
+        // Aborts the Fetch, including the body read, if the save is cancelled.
+        options.set_signal(Some(&cancel.abort_signal()?));
         let body = serde_json::to_string(command)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         options.set_body(&JsValue::from_str(&body));
@@ -71,7 +71,6 @@ pub async fn save(
             &options,
         )?;
         request.headers().set("Content-Type", "application/json")?;
-        let _cancel = context.on_cancel(move || controller.abort());
         let response: Response = JsFuture::from(
             web_sys::window()
                 .ok_or_else(|| JsValue::from_str("No browser"))?
@@ -108,7 +107,7 @@ pub async fn save(
             )))
         }
     }
-    match send(&command, context).await {
+    match send(&command, cancel).await {
         Ok(outcome) => outcome,
         // A connection failure cannot prove the server did not commit.
         Err(error) => Outcome::Unknown(SaveError::transport(error)),

@@ -15,10 +15,11 @@ browser = ["dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
 
 [dependencies]
 fusor-core.workspace = true
+derive-where.workspace = true
 futures-util = { workspace = true, features = ["std"] }
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
-web-sys = { workspace = true, optional = true, features = ["Window", "Request", "RequestInit", "Response", "AbortController", "AbortSignal"] }
+web-sys = { workspace = true, optional = true, features = ["Window", "RequestInit", "Response", "AbortController", "AbortSignal"] }
 
 [dev-dependencies]
 futures-executor.workspace = true

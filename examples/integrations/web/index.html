@@ -4,13 +4,14 @@
 <body>
 <script type="text/rust">
 use fusor::prelude::*;
+use fusor_async::fetch::{FetchError, get_text};
 use fusor_query::{QueryClient, QueryOptions, Freshness};
 use crate::ui::panel::Panel;
 use std::{cell::RefCell, num::NonZeroUsize, time::Duration};
 use wasm_bindgen::prelude::*;
 
 pub struct App {
-    queries: QueryClient<u32, String, JsValue>,
+    queries: QueryClient<u32, String, FetchError>,
     selected: Signal<u32>, count: Signal<u32>, text: Signal<String>,
     first: Signal<bool>, second: Signal<bool>, fail: Signal<bool>,
 }
@@ -18,7 +19,7 @@ impl App {
     fn new(owner: OwnerHandle) -> Self {
         let queries = fusor_query::browser::client(&owner, QueryOptions {
             freshness: Freshness::For(Duration::from_secs(60)), retention: Duration::from_secs(120), capacity: NonZeroUsize::new(4).unwrap(),
-        }, |id, request| async move { request.get_text(&format!("/lab/api/items/{id}")).await });
+        }, |id, cancel| async move { get_text(&format!("/lab/api/items/{id}"), &cancel).await });
         Self { queries, selected: signal(1), count: signal(0), text: signal("A shared draft".into()), first: signal(true), second: signal(true), fail: signal(false) }
     }
 }

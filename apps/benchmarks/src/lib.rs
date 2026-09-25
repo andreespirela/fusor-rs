@@ -1,6 +1,6 @@
 mod report;
 use fusor::{OwnerHandle, Signal, signal};
-use fusor_async::{AsyncBoundary, AsyncValue, browser};
+use fusor_async::{AsyncBoundary, AsyncValue, browser, fetch};
 use report::{MemoryRow, MetricRow, Report};
 struct App {
     view: AsyncBoundary,
@@ -15,11 +15,10 @@ impl App {
             report: browser::read(
                 &owner,
                 || (),
-                |(), context| async move {
-                    let text = context
-                        .get_text("/benchmarks/results.json")
+                |(), cancel| async move {
+                    let text = fetch::get_text("/benchmarks/results.json", &cancel)
                         .await
-                        .map_err(|error| format!("{error:?}"))?;
+                        .map_err(|error| error.to_string())?;
                     let report: Report =
                         serde_json::from_str(&text).map_err(|error| error.to_string())?;
                     // 1: the six-framework protocol; 2: versioned protocols.

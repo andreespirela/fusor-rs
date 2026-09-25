@@ -18,7 +18,7 @@ fn sample(capability: &str) -> &'static str {
             "pub fn read(owner: &fusor::OwnerHandle) { let _ = fusor_async::browser::read(owner, || 1_u32, |key, _| async move { Ok::<_, String>(key) }); }"
         }
         "query" => {
-            "pub fn query(owner: &fusor::OwnerHandle) { let _ = fusor_query::browser::client(owner, fusor_query::QueryOptions { freshness: fusor_query::Freshness::For(std::time::Duration::from_secs(60)), retention: std::time::Duration::from_secs(120), capacity: std::num::NonZeroUsize::new(4).unwrap() }, |key: u32, _: fusor_async::RequestContext| async move { Ok::<_, String>(key) }); }"
+            "pub fn query(owner: &fusor::OwnerHandle) { let _ = fusor_query::browser::client(owner, fusor_query::QueryOptions { freshness: fusor_query::Freshness::For(std::time::Duration::from_secs(60)), retention: std::time::Duration::from_secs(120), capacity: std::num::NonZeroUsize::new(4).unwrap() }, |key: u32, _: fusor_async::CancellationToken| async move { Ok::<_, String>(key) }); }"
         }
         "forms" => {
             "pub fn field() -> fusor_std::forms::TextField<String> { fusor_std::forms::TextField::new(String::from(\"draft\")) }"

@@ -1,6 +1,9 @@
 use catalog_types::DesignerProps;
 use fusor::{OwnerHandle, Signal, signal};
-use fusor_async::{AsyncBoundary, AsyncValue, browser};
+use fusor_async::{
+    AsyncBoundary, AsyncValue, browser,
+    fetch::{self, FetchError},
+};
 
 pub struct DesignerView {
     title: String,
@@ -17,24 +20,21 @@ impl DesignerView {
     }
 }
 pub struct Price {
-    value: AsyncValue<String, String, String>,
+    value: AsyncValue<String, String, FetchError>,
 }
 pub struct Stock {
-    value: AsyncValue<String, String, String>,
+    value: AsyncValue<String, String, FetchError>,
 }
 fn read(
     owner: &OwnerHandle,
     selection: Signal<String>,
     kind: &'static str,
-) -> AsyncValue<String, String, String> {
+) -> AsyncValue<String, String, FetchError> {
     browser::read(
         owner,
         move || selection.get(),
-        move |key, context| async move {
-            context
-                .get_text(&format!("/api/designer/{kind}/{key}"))
-                .await
-                .map_err(|error| format!("{error:?}"))
+        move |key, cancel| async move {
+            fetch::get_text(&format!("/api/designer/{kind}/{key}"), &cancel).await
         },
     )
 }
