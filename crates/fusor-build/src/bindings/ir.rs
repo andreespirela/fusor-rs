@@ -2,6 +2,7 @@
 
 use super::tokens::Rust;
 use fusor::template::{ChildPolicy, ComponentId, ElementId, MountId, RootKind, TextId};
+use proc_macro2::Span;
 use std::ops::Range;
 
 pub(crate) struct Edit {
@@ -18,9 +19,7 @@ pub(super) struct Plan {
 pub(super) struct Component {
     pub id: ComponentId,
     pub ty: Rust,
-    pub capture: Option<Rust>,
-    pub inline: bool,
-    pub fragment: bool,
+    pub shape: ComponentShape,
     pub empty: bool,
     pub locals: Vec<(Rust, Rust)>,
     // Proven before lexical aliases are inserted; only direct forwarding rows.
@@ -28,8 +27,6 @@ pub(super) struct Component {
     pub async_locals: Vec<Rust>,
     pub route_locals: Vec<Rust>,
     pub snapshot_locals: Vec<Rust>,
-    pub kind: RootKind,
-    pub app: Option<Rust>,
     pub elements: Vec<Element>,
     pub texts: Vec<TextId>,
     pub text_elements: Vec<TextElement>,
@@ -40,12 +37,17 @@ pub(super) struct Component {
     pub javascript: Option<crate::JavaScriptModule>,
 }
 
-// Construction choices only: lowering still consumes the existing Component IR.
+/// What kind of component this is, which decides how it mounts and what it captures.
 pub(super) enum ComponentShape {
+    /// A `rust:component` declaration, mounted from a template or an existing root.
     Declared(RootKind),
+    /// The `App` boundary, built by this state expression.
     App(Rust),
+    /// A ForEach row, rendered inline by its list.
     Row,
+    /// Children of a component tag, a Branch case or a Route body; captures its caller's state.
     Fragment(Rust),
+    /// A `rust:content` template passed to a component; captures its caller's state.
     Content(Rust),
 }
 
@@ -57,31 +59,16 @@ impl Component {
         render: RenderTarget,
         range: Range<usize>,
     ) -> Self {
-        let (capture, inline, fragment, kind, app) = match shape {
-            ComponentShape::Declared(kind) => (None, false, false, kind, None),
-            ComponentShape::App(state) => (None, false, false, RootKind::Existing, Some(state)),
-            ComponentShape::Row => (None, true, false, RootKind::Template, None),
-            ComponentShape::Fragment(capture) => {
-                (Some(capture), false, true, RootKind::Template, None)
-            }
-            ComponentShape::Content(capture) => {
-                (Some(capture), false, false, RootKind::Template, None)
-            }
-        };
         Self {
             id,
             ty,
-            capture,
-            inline,
-            fragment,
+            shape,
             empty: false,
             locals: Vec::new(),
             item_only_row: false,
             async_locals: Vec::new(),
             route_locals: Vec::new(),
             snapshot_locals: Vec::new(),
-            kind,
-            app,
             elements: Vec::new(),
             texts: Vec::new(),
             text_elements: Vec::new(),
@@ -90,6 +77,39 @@ impl Component {
             range,
             html: String::new(),
             javascript: None,
+        }
+    }
+
+    /// The state a fragment or content component borrows from its caller.
+    pub fn capture(&self) -> Option<&Rust> {
+        match &self.shape {
+            ComponentShape::Fragment(capture) | ComponentShape::Content(capture) => Some(capture),
+            ComponentShape::Declared(_) | ComponentShape::App(_) | ComponentShape::Row => None,
+        }
+    }
+
+    pub fn inline(&self) -> bool {
+        matches!(self.shape, ComponentShape::Row)
+    }
+
+    pub fn fragment(&self) -> bool {
+        matches!(self.shape, ComponentShape::Fragment(_))
+    }
+
+    pub fn kind(&self) -> RootKind {
+        match self.shape {
+            ComponentShape::Declared(kind) => kind,
+            ComponentShape::App(_) => RootKind::Existing,
+            ComponentShape::Row | ComponentShape::Fragment(_) | ComponentShape::Content(_) => {
+                RootKind::Template
+            }
+        }
+    }
+
+    pub fn app(&self) -> Option<&Rust> {
+        match &self.shape {
+            ComponentShape::App(state) => Some(state),
+            _ => None,
         }
     }
 }
@@ -131,8 +151,104 @@ pub(super) struct Input {
 }
 
 pub(super) enum InputValue {
+    /// `name="{{ expression }}"`.
     Expression(Rust),
+    /// `name="text"`: a string literal token.
+    Literal(Rust),
+    /// A `rust:content` template passed as this input.
     Content { component: usize, origin: Rust },
+}
+
+impl InputValue {
+    /// The Rust this input evaluates, unless it is projected content.
+    pub fn value(&self) -> Option<&Rust> {
+        match self {
+            Self::Expression(value) | Self::Literal(value) => Some(value),
+            Self::Content { .. } => None,
+        }
+    }
+}
+
+/// When an island's code starts, from `hydrate="…"`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Activation {
+    Load,
+    Visible,
+    Idle,
+    Interaction,
+    Manual,
+}
+
+impl Activation {
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "load" => Self::Load,
+            "visible" => Self::Visible,
+            "idle" => Self::Idle,
+            "interaction" => Self::Interaction,
+            "manual" => Self::Manual,
+            _ => return None,
+        })
+    }
+
+    /// The matching `fusor_islands::Activation` variant.
+    pub fn variant(self) -> &'static str {
+        match self {
+            Self::Load => "Load",
+            Self::Visible => "Visible",
+            Self::Idle => "Idle",
+            Self::Interaction => "Interaction",
+            Self::Manual => "Manual",
+        }
+    }
+}
+
+/// When an island's code downloads before activation, from `hydrate:prefetch="…"`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Prefetch {
+    None,
+    Load,
+    Visible,
+    Idle,
+}
+
+impl Prefetch {
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "none" => Self::None,
+            "load" => Self::Load,
+            "visible" => Self::Visible,
+            "idle" => Self::Idle,
+            _ => return None,
+        })
+    }
+
+    /// The matching `fusor_islands::Prefetch` variant.
+    pub fn variant(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Load => "Load",
+            Self::Visible => "Visible",
+            Self::Idle => "Idle",
+        }
+    }
+}
+
+/// What a coherent region does with its value.
+pub(super) enum RegionKind {
+    /// `Async` or `rust:async`: the value is the region's async boundary.
+    Boundary,
+    /// `Await` or `rust:await`: the value is read; `Await` names the result.
+    Await { alias: Option<Rust> },
+}
+
+impl RegionKind {
+    pub fn alias(&self) -> Option<&Rust> {
+        match self {
+            Self::Boundary => None,
+            Self::Await { alias } => alias.as_ref(),
+        }
+    }
 }
 
 pub(super) struct RouteBranch {
@@ -181,15 +297,15 @@ pub(super) enum Binding {
     Island {
         node: ElementId,
         descriptor: Rust,
-        props: Rust,
-        activation: String,
-        prefetch: String,
+        /// The component's inputs, which become its serialized props.
+        inputs: Vec<Input>,
+        activation: Activation,
+        prefetch: Prefetch,
     },
     Region {
         node: ElementId,
         value: Rust,
-        await_value: bool,
-        alias: Option<Rust>,
+        kind: RegionKind,
         bindings: Vec<Binding>,
     },
     Text {
@@ -247,6 +363,40 @@ pub(super) enum Binding {
 }
 
 impl Binding {
+    /// The fragment that locates this binding in the HTML; code generated for the
+    /// binding is spanned to it. It is always the first of `fragments()`.
+    pub fn origin(&self) -> &Rust {
+        match self {
+            Self::Branch { value, .. }
+            | Self::Region { value, .. }
+            | Self::Text { value, .. }
+            | Self::Property { value, .. }
+            | Self::Boolean { value, .. }
+            | Self::Checked { value, .. }
+            | Self::Class { value, .. }
+            | Self::Input { value, .. }
+            | Self::Field { value, .. } => value,
+            Self::Children { origin, .. } | Self::Router { origin, .. } => origin,
+            Self::ForEach { items, .. } => items,
+            Self::Invocation { ty, .. } => ty,
+            Self::Island { descriptor, .. } => descriptor,
+            Self::Event { handler, .. } => handler,
+            Self::Slot { content, .. } => content,
+            Self::Attribute { value, .. } | Self::Value { value, .. } => value
+                .0
+                .iter()
+                .find_map(|part| match part {
+                    StringPart::Expression(expression) => Some(expression),
+                    StringPart::Literal(_) => None,
+                })
+                .expect("an interpolated attribute has an expression"),
+        }
+    }
+
+    pub fn span(&self) -> Span {
+        self.origin().span()
+    }
+
     pub fn fragments(&self) -> Vec<&Rust> {
         match self {
             Self::Branch { value, cases, .. } => std::iter::once(value)
@@ -260,27 +410,32 @@ impl Binding {
                 condition,
                 key,
                 ..
-            } => {
-                std::iter::once(ty)
-                    .chain(inputs.iter().flat_map(|input| {
-                        let (InputValue::Expression(value)
-                        | InputValue::Content { origin: value, .. }) = &input.value;
-                        [&input.name, value]
-                    }))
-                    .chain(condition)
-                    .chain(key)
-                    .collect()
-            }
+            } => std::iter::once(ty)
+                .chain(inputs.iter().flat_map(|input| {
+                    let (InputValue::Expression(value)
+                    | InputValue::Literal(value)
+                    | InputValue::Content { origin: value, .. }) = &input.value;
+                    [&input.name, value]
+                }))
+                .chain(condition)
+                .chain(key)
+                .collect(),
             Self::Island {
-                descriptor, props, ..
-            } => vec![descriptor, props],
+                descriptor, inputs, ..
+            } => std::iter::once(descriptor)
+                .chain(
+                    inputs
+                        .iter()
+                        .flat_map(|input| [&input.name].into_iter().chain(input.value.value())),
+                )
+                .collect(),
             Self::Region {
                 value,
-                alias,
+                kind,
                 bindings,
                 ..
             } => std::iter::once(value)
-                .chain(alias)
+                .chain(kind.alias())
                 .chain(bindings.iter().flat_map(Self::fragments))
                 .collect(),
             Self::Text { value, .. }

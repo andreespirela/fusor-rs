@@ -2,21 +2,8 @@ use crate::bindings::{
     ir::{InterpolatedString, StringPart},
     tokens::Rust,
 };
-use fusor::template::{ElementId, MountId, TextId};
-use proc_macro2::{Ident, TokenStream};
-use quote::{format_ident, quote};
-
-pub(super) fn element(id: ElementId) -> Ident {
-    format_ident!("__fusor_element_{}", id.index())
-}
-
-pub(super) fn point(id: MountId) -> Ident {
-    format_ident!("__fusor_mount_{}", id.index())
-}
-
-pub(super) fn text(id: TextId) -> Ident {
-    format_ident!("__fusor_text_{}", id.index())
-}
+use proc_macro2::TokenStream;
+use quote::quote;
 
 // The typed path changes the generated closure's result representation. Keep
 // the original String result when authored code can return from that closure;
@@ -53,8 +40,4 @@ pub(in crate::bindings) fn string(value: &InterpolatedString) -> TokenStream {
     } else {
         quote! { ::std::format!(#format #(, (#expressions))*) }
     }
-}
-
-pub(super) fn clone_locals(locals: &[Rust]) -> TokenStream {
-    quote! { #(let #locals = ::std::clone::Clone::clone(&#locals);)* }
 }

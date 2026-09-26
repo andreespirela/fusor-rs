@@ -6,14 +6,17 @@
 //! the build-script boundary requires tokens to be written as a .rs file.
 
 use crate::{BindingLocation, ExtractError, error};
-use proc_macro2::{Delimiter, Spacing, Span, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, Spacing, Span, TokenStream, TokenTree};
 use quote::ToTokens;
 use std::collections::BTreeMap;
 
+/// Rust tokens and the HTML offset they came from. `span` identifies the tokens
+/// for the source map; it survives rewrites that wrap `tokens` in generated code.
 #[derive(Clone)]
 pub(super) struct Rust {
     pub tokens: TokenStream,
     pub offset: usize,
+    span: Span,
 }
 
 impl Rust {
@@ -28,17 +31,83 @@ impl Rust {
         if tokens.is_empty() {
             return Err(error(source, offset, "expected a Rust expression or type"));
         }
-        Ok(Self { tokens, offset })
+        Ok(Self::authored(tokens, offset))
     }
 
-    pub fn span(&self) -> Span {
-        self.tokens
+    /// Nonempty tokens parsed from the HTML at `offset`.
+    pub fn authored(tokens: TokenStream, offset: usize) -> Self {
+        let span = tokens
             .clone()
             .into_iter()
             .next()
             .expect("nonempty Rust")
-            .span()
+            .span();
+        Self {
+            tokens,
+            offset,
+            span,
+        }
     }
+
+    /// Tokens the compiler writes for the HTML at `offset`, such as a generated
+    /// type name. They get a span identity of their own, so the source map
+    /// points them at that HTML rather than at other generated code.
+    pub fn synthetic(tokens: TokenStream, offset: usize) -> Self {
+        let span = fresh_span();
+        Self {
+            tokens: respan(tokens, span),
+            offset,
+            span,
+        }
+    }
+
+    pub fn ident(name: &str, offset: usize) -> Self {
+        Self::synthetic(
+            Ident::new(name, Span::call_site()).into_token_stream(),
+            offset,
+        )
+    }
+
+    /// Generated tokens that belong to this fragment's origin.
+    pub fn derived(&self, tokens: TokenStream) -> Self {
+        Self {
+            tokens,
+            offset: self.offset,
+            span: self.span,
+        }
+    }
+
+    /// Whether two fragments are the same Rust, such as one local shadowing another.
+    pub fn same_tokens(&self, other: &Rust) -> bool {
+        self.tokens.to_string() == other.tokens.to_string()
+    }
+
+    pub fn span(&self) -> Span {
+        self.span
+    }
+}
+
+/// Every parsed string is a new source file to proc-macro2, so its span is a
+/// new identity. Nothing else can mint one.
+fn fresh_span() -> Span {
+    let tokens: TokenStream = "_".parse().expect("an identifier");
+    tokens.into_iter().next().expect("one token").span()
+}
+
+fn respan(tokens: TokenStream, span: Span) -> TokenStream {
+    tokens
+        .into_iter()
+        .map(|mut token| {
+            if let TokenTree::Group(group) = &token {
+                let mut inner = Group::new(group.delimiter(), respan(group.stream(), span));
+                inner.set_span(span);
+                token = TokenTree::Group(inner);
+            } else {
+                token.set_span(span);
+            }
+            token
+        })
+        .collect()
 }
 
 impl ToTokens for Rust {
@@ -53,7 +122,11 @@ pub(super) struct Origins(BTreeMap<String, usize>);
 impl Origins {
     pub fn register(&mut self, rust: &Rust) {
         // Span::file is the native source-file identity, never parsed or fabricated.
-        self.0.insert(rust.span().file(), rust.offset);
+        // Call-site tokens are generated scaffolding and keep the caller's fallback.
+        let file = rust.span().file();
+        if file != Span::call_site().file() {
+            self.0.insert(file, rust.offset);
+        }
     }
 
     fn offset(&self, span: Span, fallback: usize) -> usize {
@@ -124,19 +197,17 @@ impl Writer<'_> {
             .last()
             .map_or(start, |last| start.max(last.generated_end));
         if start < end {
-            let location = error(self.source, offset, "");
+            let (line, column) = crate::location(self.source, offset);
             if let Some(last) = self.locations.last_mut().filter(|last| {
-                last.generated_end == start
-                    && last.line == location.line
-                    && last.column == location.column
+                last.generated_end == start && last.line == line && last.column == column
             }) {
                 last.generated_end = end;
             } else {
                 self.locations.push(BindingLocation {
                     generated_start: start,
                     generated_end: end,
-                    line: location.line,
-                    column: location.column,
+                    line,
+                    column,
                 });
             }
         }

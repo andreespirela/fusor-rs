@@ -102,7 +102,7 @@ impl fmt::Display for ExtractError {
 impl Error for ExtractError {}
 
 /// The 1-based line and character column of a byte offset, clamped to the source.
-fn location(source: &str, offset: usize) -> (usize, usize) {
+pub(crate) fn location(source: &str, offset: usize) -> (usize, usize) {
     let mut offset = offset.min(source.len());
     while !source.is_char_boundary(offset) {
         offset -= 1;

@@ -91,3 +91,64 @@ fn rejects_corrupt_unsupported_and_ambiguous_source_maps() {
         assert!(input.parse::<SourceMap>().is_err(), "accepted {input:?}");
     }
 }
+
+#[test]
+fn attribute_interpolations_map_to_their_own_lines_in_multiline_values() {
+    let html = r#"<script type="text/rust">struct Card;</script>
+<p rust:component="Card" title="Hello
+  {{ state.first }} and
+  {{ state.second }}" hidden="{{ state.hidden }}">x</p>"#;
+    let page = extract(html).unwrap();
+    let map = SourceMap::new(page.locations).unwrap();
+    for (expression, line, column) in [("first", 3, 3), ("second", 4, 3), ("hidden", 4, 31)] {
+        let generated_line = find_identifier(page.rust.parse().unwrap(), expression).unwrap();
+        let origin = map.lookup(generated_line).unwrap();
+        assert_eq!((origin.line, origin.column), (line, column), "{expression}");
+    }
+    let error = extract(&html.replace("{{ state.second }}", "{{ }}")).unwrap_err();
+    assert_eq!((error.line, error.column), (4, 3), "{error}");
+}
+
+#[test]
+fn generated_scaffolding_maps_to_its_component_not_to_a_rewritten_fragment() {
+    // Row text is wrapped in lexical aliases; the wrapper's tokens are generated
+    // and must not claim every other generated token in the file.
+    let html = r#"<script type="text/rust">struct List;</script>
+<ul rust:component="List">
+<ForEach items="{{ state.items.get() }}" key="{{ |item| item.id }}">
+<li title="{{ item.get().hint }}">{{ item.get().title }}</li>
+</ForEach></ul>"#;
+    let page = extract(html).unwrap();
+    let map = SourceMap::new(page.locations).unwrap();
+    let tokens: TokenStream = page.rust.parse().unwrap();
+    let line = |name| {
+        map.lookup(find_identifier(tokens.clone(), name).unwrap())
+            .unwrap()
+            .line
+    };
+    assert_eq!(line("prepare_component"), 2);
+    assert_eq!(line("__FUSOR_TEMPLATE"), 2);
+    assert_eq!(line("title"), 4);
+    assert_eq!(line("hint"), 4);
+}
+
+#[test]
+fn hydrated_component_inputs_keep_their_html_lines() {
+    let html = r#"<script type="text/rust">struct Page;</script>
+<main rust:component="Page" rust:render="server">
+  <catalog::Cart hydrate="visible"
+      product_id="{{ state.cart_id }}"
+      title="Cart"></catalog::Cart>
+</main>"#;
+    let page = extract(html).unwrap();
+    let map = SourceMap::new(page.locations).unwrap();
+    let tokens: TokenStream = page.rust.parse().unwrap();
+    let line = |name| {
+        map.lookup(find_identifier(tokens.clone(), name).unwrap())
+            .unwrap()
+            .line
+    };
+    assert_eq!(line("Cart"), 3);
+    assert_eq!(line("cart_id"), 4);
+    assert_eq!(line("title"), 5);
+}

@@ -1,62 +1,19 @@
 //! Structural control flow. Rust patterns are parsed by syn and checked by rustc.
-use super::{ir::*, tokens::Rust};
-use crate::{ExtractError, error};
-use html5gum::StartTag;
+use super::{ir::*, tag_input::TagInput, tokens::Rust};
+use crate::ExtractError;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::parse::Parser;
 
-pub(super) fn expression(
-    source: &str,
-    tag: &StartTag<usize>,
-    attr: &[u8],
-) -> Result<Rust, ExtractError> {
-    if tag.attributes.len() != 1 {
-        return Err(error(
-            source,
-            tag.span.start,
-            "If accepts only condition; Match accepts only value",
-        ));
-    }
-    let value = tag.attributes.get(attr).ok_or_else(|| {
-        error(
-            source,
-            tag.span.start,
-            "If requires condition=\"{{ boolean }}\"; Match requires value=\"{{ expression }}\"",
-        )
-    })?;
-    let text = String::from_utf8_lossy(value);
-    let parts = super::interpolation::interpolations(source, &text, value.span.start, false)?;
-    super::interpolation::exact_expression(
-        source,
-        &text,
-        parts,
-        value.span.start,
-        "control-flow inputs require exactly one {{ Rust expression }}",
-    )
-}
-
-pub(super) fn pattern(
-    source: &str,
-    tag: &StartTag<usize>,
-) -> Result<(Rust, Vec<Rust>), ExtractError> {
-    if tag.attributes.len() != 1 || !tag.attributes.contains_key(b"pattern".as_slice()) {
-        return Err(error(
-            source,
-            tag.span.start,
-            "Case requires only pattern=\"Rust pattern\"",
-        ));
-    }
-    let value = &tag.attributes[b"pattern".as_slice()];
+pub(super) fn pattern(input: &TagInput) -> Result<(Rust, Vec<Rust>), ExtractError> {
+    let source = input.source();
+    input.accepts(&["pattern"], "only pattern=\"Rust pattern\"")?;
+    let (value, offset) = input
+        .text("pattern")
+        .ok_or_else(|| input.error("Case requires pattern=\"Rust pattern\""))?;
     let pattern = syn::Pat::parse_multi_with_leading_vert
-        .parse_str(&String::from_utf8_lossy(value))
-        .map_err(|e| {
-            error(
-                source,
-                value.span.start,
-                format!("invalid Rust pattern: {e}"),
-            )
-        })?;
+        .parse_str(&value)
+        .map_err(|e| input.error_at(offset, format!("invalid Rust pattern: {e}")))?;
     // Visit binding positions only. Paths and struct member names are not locals.
     fn names(pat: &syn::Pat, result: &mut Vec<syn::Ident>) -> Result<(), &'static str> {
         match pat {
@@ -115,37 +72,34 @@ pub(super) fn pattern(
         Ok(())
     }
     let mut bindings = Vec::new();
-    names(&pattern, &mut bindings).map_err(|e| error(source, value.span.start, e))?;
+    names(&pattern, &mut bindings).map_err(|e| input.error_at(offset, e))?;
     let bindings = bindings
         .into_iter()
         .map(|name| {
             let text = name.to_string();
             let text = text.trim_start_matches("r#");
             if super::tags::reserved_scope_name(text) {
-                return Err(error(
-                    source,
-                    value.span.start,
-                    "Case bindings cannot shadow framework scope names",
-                ));
+                return Err(
+                    input.error_at(offset, "Case bindings cannot shadow framework scope names")
+                );
             }
-            Rust::new(source, name.into_token_stream(), value.span.start)
+            Rust::new(source, name.into_token_stream(), offset)
         })
         .collect::<Result<_, _>>()?;
     Ok((
-        Rust::new(source, pattern.into_token_stream(), value.span.start)?,
+        Rust::new(source, pattern.into_token_stream(), offset)?,
         bindings,
     ))
 }
 
 pub(super) fn body(
-    source: &str,
     components: &mut Vec<Component>,
     owner: usize,
     first: usize,
     offset: usize,
     locals: Vec<Rust>,
     aliases: Vec<Rust>,
-) -> Result<usize, ExtractError> {
+) -> usize {
     let index = components.len();
     let id = fusor::template::ComponentId::new(first + index);
     components.push(Component {
@@ -155,13 +109,13 @@ pub(super) fn body(
         snapshot_locals: components[owner].snapshot_locals.clone(),
         ..Component::new(
             id,
-            Rust::parse(source, &format!("__FusorBranch{}", id.index()), offset)?,
+            Rust::ident(&format!("__FusorBranch{}", id.index()), offset),
             ComponentShape::Fragment(components[owner].ty.clone()),
             components[owner].render,
             offset..offset,
         )
     });
-    Ok(index)
+    index
 }
 
 // Nested pairs have no tuple-arity trait limit. Only the selected case owns data.

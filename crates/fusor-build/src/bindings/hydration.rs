@@ -1,9 +1,8 @@
 //! Component-tag authoring for the existing typed delivery protocol.
-use super::{ir::*, tags, tokens::Rust};
+use super::{ir::*, tags};
 use crate::{ExtractError, error};
 use fusor::template::{self, ChildPolicy, ElementId, MountId};
 use html5gum::StartTag;
-use quote::quote;
 
 pub(super) fn lower(
     source: &str,
@@ -26,23 +25,20 @@ pub(super) fn lower(
     };
     let activation = value(b"hydrate").expect("hydrate present");
     let prefetch = value(b"hydrate:prefetch").unwrap_or_else(|| "none".into());
-    if !matches!(
-        activation.as_str(),
-        "load" | "visible" | "idle" | "interaction" | "manual"
-    ) {
+    let Some(activation) = Activation::parse(&activation) else {
         return Err(error(
             source,
             offset,
             "hydrate must be load, visible, idle, interaction, or manual",
         ));
-    }
-    if !matches!(prefetch.as_str(), "none" | "load" | "visible" | "idle") {
+    };
+    let Some(prefetch) = Prefetch::parse(&prefetch) else {
         return Err(error(
             source,
             offset,
             "hydrate:prefetch must be none, load, visible, or idle",
         ));
-    }
+    };
     let id = value(b"hydrate:id");
     if id
         .as_ref()
@@ -54,7 +50,7 @@ pub(super) fn lower(
             "hydrate:id requires a nonempty static instance ID",
         ));
     }
-    if activation == "interaction" && id.is_none() {
+    if activation == Activation::Interaction && id.is_none() {
         return Err(error(
             source,
             offset,
@@ -82,31 +78,10 @@ pub(super) fn lower(
             "hydrated components cannot use rust:if or rust:key; their lifetime belongs to the server-rendered page",
         ));
     }
-    let fields = inputs.iter().map(|input| {
-        let name = &input.name;
-        let InputValue::Expression(value) = &input.value else {
-            unreachable!()
-        };
-        // String literal inputs own their value across the serialized boundary.
-        if syn::parse2::<syn::LitStr>(quote! { #value }).is_ok() {
-            quote! { #name: ::core::convert::Into::into(#value) }
-        } else {
-            quote! { #name: { #value } }
-        }
-    });
-    let props = Rust::parse(
-        source,
-        &quote! {{
-            type __FusorIslandProps = <#ty as ::fusor_islands::Island>::Props;
-            __FusorIslandProps { #(#fields),* }
-        }}
-        .to_string(),
-        offset,
-    )?;
     component.bindings.push(Binding::Island {
         node,
         descriptor: ty,
-        props,
+        inputs,
         activation,
         prefetch,
     });
@@ -116,14 +91,7 @@ pub(super) fn lower(
         children: ChildPolicy::Managed,
     });
     let id = id
-        .map(|id| {
-            format!(
-                " id=\"{}\"",
-                id.replace('&', "&amp;")
-                    .replace('"', "&quot;")
-                    .replace('<', "&lt;")
-            )
-        })
+        .map(|id| format!(" id=\"{}\"", super::markup::escape_attribute(&id)))
         .unwrap_or_default();
     Ok(format!(
         "<div{id} {}=\"{node}\" {}=\"\">",

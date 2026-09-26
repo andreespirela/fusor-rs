@@ -49,8 +49,8 @@ impl PendingModule {
             ));
         }
         let digest = format!("{:x}", Sha256::digest(source.as_bytes()));
-        let location = error(source, tag.span.end, "");
-        let component_name = component.app.as_ref().map_or_else(
+        let (line, column) = crate::location(source, tag.span.end);
+        let component_name = component.app().map_or_else(
             || component.ty.tokens.to_string(),
             |app| {
                 syn::parse2::<syn::Expr>(app.tokens.clone())
@@ -68,8 +68,8 @@ impl PendingModule {
             component: component_name,
             src,
             content: String::new(),
-            line: location.line,
-            column: location.column,
+            line,
+            column,
         };
         Ok(Self {
             start: tag.span.start,

@@ -1,5 +1,9 @@
 //! Rewrite lexical captures shared by lists, routes, Case and Await.
-use super::{ir::*, tokens::Rust};
+use super::{
+    emit::{clone_locals, indexed},
+    ir::*,
+    tokens::Rust,
+};
 use quote::quote;
 
 pub(super) fn rewrite(component: &mut Component) {
@@ -15,17 +19,14 @@ pub(super) fn rewrite(component: &mut Component) {
         let params = &component.route_locals;
         let snapshots = &component.snapshot_locals;
         let snapshot_reads = quote! { #(let #snapshots = #snapshots.get();)* };
+        let params = clone_locals(params);
         if component.locals.is_empty() {
-            value.tokens = quote! {{ #snapshot_reads #(let #params = ::std::clone::Clone::clone(&#params);)* #original }};
+            value.tokens = quote! {{ #snapshot_reads #params #original }};
             return;
         }
-        aliases.push(
-            quote! { #snapshot_reads #(let #params = ::std::clone::Clone::clone(&#params);)* },
-        );
+        aliases.push(quote! { #snapshot_reads #params });
         let depth = component.locals.len();
-        let contexts: Vec<_> = (0..depth)
-            .map(|i| quote::format_ident!("__fusor_context_{i}"))
-            .collect();
+        let contexts: Vec<_> = (0..depth).map(|i| indexed("context", i)).collect();
         let first = &contexts[0];
         aliases.push(quote! { let #first = &state; });
         for i in 1..depth {
@@ -112,11 +113,12 @@ pub(super) fn rewrite(component: &mut Component) {
                         wrap(v)
                     }
                 }
-                Binding::Island {
-                    descriptor, props, ..
-                } => {
-                    wrap(descriptor);
-                    wrap(props)
+                Binding::Island { inputs, .. } => {
+                    for input in inputs {
+                        if let InputValue::Expression(value) = &mut input.value {
+                            wrap(value);
+                        }
+                    }
                 }
             }
         }

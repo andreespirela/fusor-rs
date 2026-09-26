@@ -1,7 +1,6 @@
 //! Structural async inputs; embedded expressions remain native Rust tokens.
-use super::{interpolation::interpolations, tokens::Rust};
-use crate::{ExtractError, error};
-use html5gum::StartTag;
+use super::{tag_input::TagInput, tokens::Rust};
+use crate::ExtractError;
 
 pub(super) enum Declaration {
     Async { value: Rust },
@@ -17,75 +16,32 @@ impl Declaration {
     }
 }
 
-pub(super) fn inputs(
-    source: &str,
-    tag: &StartTag<usize>,
-    await_value: bool,
-) -> Result<Declaration, ExtractError> {
-    if tag.self_closing
-        || tag.attributes.keys().any(|key| {
-            if await_value {
-                !matches!(key.as_ref(), b"value" | b"let")
-            } else {
-                key.as_ref() != b"boundary"
-            }
-        })
-    {
-        return Err(error(
-            source,
-            tag.span.start,
-            "Async accepts optional boundary; Await requires value and let. Use explicit closing tags and put DOM attributes on the native root",
-        ));
-    }
-    let expression = |name: &[u8]| -> Result<Rust, ExtractError> {
-        let value = tag.attributes.get(name).ok_or_else(|| {
-            error(
-                source,
-                tag.span.start,
-                "Await requires value=\"{{ read }}\" and let=\"name\"",
-            )
-        })?;
-        let text = String::from_utf8_lossy(value);
-        let parts = interpolations(source, &text, value.span.start, false)?;
-        super::interpolation::exact_expression(
-            source,
-            &text,
-            parts,
-            value.span.start,
-            "async inputs require exactly one {{ Rust expression }}",
-        )
-    };
+pub(super) fn inputs(input: &TagInput, await_value: bool) -> Result<Declaration, ExtractError> {
+    input.closed()?;
     if await_value {
-        let name = tag.attributes.get(b"let".as_slice()).ok_or_else(|| {
-            error(
-                source,
-                tag.span.start,
-                "Await requires let=\"name\" to name its resolved value",
-            )
-        })?;
-        let text = String::from_utf8_lossy(name);
-        if super::tags::reserved_scope_name(&text) {
-            return Err(error(
-                source,
-                name.span.start,
-                "Await names cannot shadow framework scope names",
-            ));
-        }
+        input.accepts(
+            &["value", "let"],
+            "only value=\"{{ read }}\" and let=\"name\"; put HTML attributes on its native root",
+        )?;
+        let alias = input
+            .binding("let")?
+            .ok_or_else(|| input.error("Await requires let=\"name\" to name its resolved value"))?;
         Ok(Declaration::Await {
-            value: expression(b"value")?,
-            alias: super::tags::field(source, &text, name.span.start)?,
+            value: input.expression("value")?,
+            alias,
         })
     } else {
-        Ok(Declaration::Async {
-            value: if tag.attributes.is_empty() {
-                Rust::parse(
-                    source,
-                    "::fusor::coherence::AsyncBoundary::coherent()",
-                    tag.span.start,
-                )?
-            } else {
-                expression(b"boundary")?
-            },
-        })
+        input.accepts(
+            &["boundary"],
+            "only boundary=\"{{ boundary }}\"; put HTML attributes on its native root",
+        )?;
+        let value = match input.optional_expression("boundary")? {
+            Some(value) => value,
+            None => Rust::synthetic(
+                quote::quote! { ::fusor::coherence::AsyncBoundary::coherent() },
+                input.offset(),
+            ),
+        };
+        Ok(Declaration::Async { value })
     }
 }

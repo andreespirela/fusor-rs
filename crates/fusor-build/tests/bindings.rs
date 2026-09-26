@@ -82,8 +82,6 @@ fn managed_application_and_router_keep_constructors_as_native_rust() {
     assert!(rust.contains(&tokens(
         "::fusor_router::browser::declarative::mount_routes"
     )));
-    assert!(!page.html.contains("rust:app"));
-    assert!(!page.html.contains("rust:outlet"));
     assert!(page.locations.iter().any(|location| location.line == 2));
     assert!(page.locations.iter().any(|location| location.line == 3));
     for markup in [
@@ -91,30 +89,12 @@ fn managed_application_and_router_keep_constructors_as_native_rust() {
         r#"<App state="Counter"><main></main></App>"#,
         r#"<App state="{{ Counter }}"><main></main></App><App state="{{ Other }}"><aside></aside></App>"#,
         r#"<App state="{{ Counter }}"><main rust:component="Counter"></main></App>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render">fallback</div></main>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render"><p></p></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render" rust:slot="content"></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render" rust:attach="setup"></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render" rust:if="true"></div></main>"#,
-        r#"<main rust:component="Counter"><input rust:outlet="render"></main>"#,
-        r#"<main rust:component="Counter"><select rust:outlet="render"></select></main>"#,
     ] {
         assert!(
             extract(&format!("{STATE}{markup}")).is_err(),
             "accepted {markup}"
         );
     }
-}
-
-#[test]
-fn removed_attachment_reports_the_native_javascript_migration() {
-    let source = format!(
-        r#"{STATE}
-<main rust:component="Counter"><div rust:attach="setup(element, owner)"></div></main>"#
-    );
-    let failure = extract(&source).expect_err("removed directive must not compile");
-    assert_eq!(failure.line, 2);
-    assert!(failure.to_string().contains("onMount and onCleanup"));
 }
 
 #[test]
@@ -472,30 +452,31 @@ fn component_tags_replace_mount_constructors_in_every_render_target() {
 }
 
 #[test]
-fn removed_mount_syntax_reports_a_migration() {
-    for markup in [
-        "<div rust:component=Counter rust:mount='Child'></div>",
-        "<div rust:component=Counter><div rust:mount='Child'>Lost</div></div>",
+fn unknown_rust_directives_are_rejected_by_name() {
+    for (markup, name) in [
+        (
+            "<div rust:component=Counter rust:mount='Child'></div>",
+            "rust:mount",
+        ),
+        (
+            "<main rust:component=Counter><ul rust:each='state.items'></ul></main>",
+            "rust:each",
+        ),
     ] {
         let error = extract(&format!("{STATE}{markup}")).unwrap_err();
-        assert!(error.message.contains("rust:mount was removed"));
-        assert!(error.message.contains("component tag"));
+        assert_eq!(error.message, format!("unknown Rust directive {name:?}"));
     }
 }
 
 #[test]
 fn selective_and_coherent_contracts_reject_unsupported_authoring() {
     for markup in [
-        r#"<main rust:component="Counter" rust:render="server"><div rust:island="Cart" rust:props="props" rust:activate="hover"></div></main>"#,
-        r#"<main rust:component="Counter" rust:render="server"><div rust:island="Cart" rust:props="props" rust:prefetch="interaction"></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:island="Cart" rust:props="props"></div></main>"#,
         r#"<main rust:component="Counter" rust:render="server"><div rust:async="state.view"></div></main>"#,
         r#"<main rust:component="Counter" rust:render="shared"><input value="{{ state.value }}"></main>"#,
         r#"<main rust:component="Counter" rust:render="shared"><ul><li>Stale placeholder</li><ForEach items="{{ state.items }}" key="{{ |item| item.id }}"><li>{{ item.get().title }}</li></ForEach></ul></main>"#,
         r#"<main rust:component="Counter"><div rust:async="state.view"><input bind:value="state.value"></div></main>"#,
         r#"<main rust:component="Counter"><div rust:async="state.view"><div rust:async="state.other"></div></div></main>"#,
         r#"<main rust:component="Counter"><div rust:async="state.view"><x-widget></x-widget></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:async="state.view"><div rust:attach="setup"></div></div></main>"#,
     ] {
         let error = extract(&format!("{STATE}\n{markup}")).expect_err(markup);
         assert_eq!(error.line, 2, "{markup}: {error}");
@@ -669,25 +650,7 @@ fn foreach_refresh_ignores_static_row_text_but_tracks_rust() {
 }
 
 #[test]
-fn removed_list_directives_report_the_foreach_migration() {
-    // These are intentionally obsolete examples: keep the migration diagnostic
-    // useful, while all other list tests exercise the supported ForEach syntax.
-    for markup in [
-        r#"<ul rust:each="state.items.get()"></ul>"#,
-        r#"<ul rust:row="Row::new(item)"></ul>"#,
-        r#"<ul rust:each="state.items.get()" rust:key="item.id" rust:row="Row::new(item)"></ul>"#,
-    ] {
-        let source = format!("{STATE}\n<main rust:component=Counter>{markup}</main>");
-        let error = extract(&source).expect_err(markup);
-        assert_eq!(error.line, 2);
-        assert!(error.message.contains("were removed"), "{error}");
-        assert!(error.message.contains("<ForEach"), "{error}");
-        assert!(error.message.contains("inline HTML"), "{error}");
-    }
-}
-
-#[test]
-fn app_boundary_validates_structure_and_rejects_legacy_startup() {
+fn app_boundary_validates_structure() {
     for markup in [
         r#"<App state="{{ build() }}" />"#,
         r#"<App state="{{ build() }}"></App>"#,
@@ -703,9 +666,6 @@ fn app_boundary_validates_structure_and_rejects_legacy_startup() {
     ] {
         assert!(extract(markup).is_err(), "accepted {markup}");
     }
-    let error = extract(r#"<main rust:component="Root" rust:app="build()"></main>"#).unwrap_err();
-    assert!(error.message.contains("rust:app was removed"));
-    assert!(error.message.contains("<App state="));
     let html = r#"<App state="{{ factory(owner)? }}"><main><p>{{ state.title }}</p></main></App>"#;
     let page = extract(&format!("{STATE}{html}")).unwrap();
     assert!(!page.html.contains("<App"));
@@ -1131,6 +1091,18 @@ fn hydration_rejects_ambiguous_policies_placement_and_owned_contents() {
             r#"<Cart hydrate="load" rust:if="state.show"></Cart>"#,
             "cannot use rust:if",
         ),
+        (
+            r#"<Cart hydrate="load" hydrate:prefech="idle"></Cart>"#,
+            "unknown attribute hydrate:prefech; component tags accept hydrate, hydrate:id and hydrate:prefetch",
+        ),
+        (
+            r#"<Cart hydrate:id="cart"></Cart>"#,
+            "hydrate:id requires hydrate on the same component tag",
+        ),
+        (
+            r#"<Cart hydrate="load" hydrate:target="cart"></Cart>"#,
+            "hydrate:target belongs on the native button that activates an island",
+        ),
         (r#"<div hydrate="load"></div>"#, "Rust component tag"),
         (r#"<div hydrate:prefetch="idle"></div>"#, "hydrate belongs"),
         (
@@ -1142,10 +1114,6 @@ fn hydration_rejects_ambiguous_policies_placement_and_owned_contents() {
             "type=button",
         ),
         (r#"<a hydrate:target="cart">Open</a>"#, "native type=button"),
-        (
-            r#"<div rust:island="Cart" rust:props="props"></div>"#,
-            "directives were removed",
-        ),
     ] {
         let source = format!(
             r#"{STATE}<main rust:component="Counter" rust:render="server">{markup}</main>"#
@@ -1589,4 +1557,146 @@ fn exclusive_branches_can_each_place_children_but_not_duplicate_them() {
     );
     extract(&source).unwrap();
     assert!(extract(&source.replace("<main>", "<main><Children></Children>")).is_err());
+}
+
+/// Extract `markup` inside a component and return the error's column and message.
+/// `STATE` and the wrapper have no newlines, so the column is a byte position.
+fn built_in_error(markup: &str) -> (usize, String) {
+    let source = format!("{STATE}<main rust:component=Counter>{markup}</main>");
+    let error = extract(&source).expect_err(markup);
+    assert_eq!(error.line, 1, "{markup}: {error}");
+    let base = source.find(markup).unwrap();
+    (error.column - 1 - base, error.message)
+}
+
+#[test]
+fn built_in_tag_attributes_name_the_tag_and_point_at_the_value() {
+    let foreach = |attributes: &str| {
+        format!(
+            r#"<ul><ForEach items="{{{{ state.items }}}}" key="{{{{ |x| x.id }}}}"{attributes}><li></li></ForEach></ul>"#
+        )
+    };
+    let route = |attributes: &str| format!(r#"<Router><Route {attributes}>Page</Route></Router>"#);
+    let cases = [
+        (r#"<If></If>"#.to_owned(), "<If", r#"If requires condition="{{ Rust expression }}""#),
+        (r#"<If condition="true"></If>"#.into(), "true", "If condition requires exactly one {{ Rust expression }}"),
+        (r#"<If condition="{{ true }}" class="x"></If>"#.into(), "<If", "If accepts only condition"),
+        (r#"<If condition="{{ true }}" />"#.into(), "<If", "If, Else, Match and Case require exact spelling and explicit closing tags"),
+        (r#"<If condition="{{ true }}"><Else hidden></Else></If>"#.into(), "<Else", "Else accepts no attributes"),
+        (r#"<Match value="{{ 1 }}"><Case></Case></Match>"#.into(), "<Case", r#"Case requires pattern="Rust pattern""#),
+        (foreach(r#" item="state""#), "state\"", "ForEach item cannot shadow framework scope names"),
+        (foreach(r#" index="Position""#), "Position", "ForEach index must be a snake_case Rust identifier"),
+        (foreach(r#" item="x" index="x""#), "<ForEach", "ForEach item and index names must differ"),
+        (foreach(r#" rows="{{ 1 }}""#), "<ForEach", "ForEach accepts items, key, and optional item and index names"),
+        (r#"<ul><foreach items="{{ 1 }}" key="{{ 1 }}"><li></li></foreach></ul>"#.into(), "<foreach", "the built-in component is spelled ForEach"),
+        (r#"<Async><section><Await value="{{ state.read }}"><p></p></Await></section></Async>"#.into(), "<Await", r#"Await requires let="name" to name its resolved value"#),
+        (r#"<Async><section><Await value="{{ state.read }}" let="ready"><p></p></Await></section></Async>"#.into(), "ready\"", "Await let cannot shadow framework scope names"),
+        (r#"<Async><section><Await let="value"><p></p></Await></section></Async>"#.into(), "<Await", r#"Await requires value="{{ Rust expression }}""#),
+        (r#"<Async boundary="state.view"><section></section></Async>"#.into(), "state.view", "Async boundary requires exactly one {{ Rust expression }}"),
+        (route(r#"path="/" let="state""#), "state\"", "Route let cannot shadow framework scope names"),
+        (route(r#"fallback path="/""#), "<Route ", "write <Route fallback> without path or let"),
+        (route(r#"to="/""#), "<Route ", "Route accepts path and optional let, or fallback"),
+    ];
+    for (markup, at, message) in cases {
+        let (column, actual) = built_in_error(&markup);
+        assert_eq!(actual, message, "{markup}");
+        assert_eq!(column, markup.find(at).unwrap(), "{markup}: {actual}");
+    }
+}
+
+#[test]
+fn app_state_is_one_expression_on_a_closed_tag() {
+    for (markup, message) in [
+        (
+            r#"<App state="{{ Counter }}" />"#,
+            "App requires an explicit closing tag",
+        ),
+        (
+            r#"<App state="Counter"><main></main></App>"#,
+            "App state requires exactly one {{ Rust expression }}",
+        ),
+        (
+            r#"<App state="{{ Counter }}" class="x"><main></main></App>"#,
+            r#"App accepts only state="{{ Rust expression }}"; put HTML attributes on its native root"#,
+        ),
+    ] {
+        let error = extract(&format!("{STATE}{markup}")).expect_err(markup);
+        assert_eq!(error.message, message, "{markup}");
+    }
+}
+
+#[test]
+fn comments_around_named_content_are_not_ordinary_children() {
+    let content = r#"<template rust:content="body"><p>Body</p></template>"#;
+    for markup in [
+        format!("<Child><!-- the body -->{content}</Child>"),
+        format!("<Child>\n  <!-- first -->\n  {content}\n  <!-- after -->\n</Child>"),
+    ] {
+        let page = extract(&format!(
+            "{STATE}<main rust:component=Counter>{markup}</main>"
+        ))
+        .unwrap_or_else(|error| panic!("{markup}: {error}"));
+        assert!(page.html.contains("<!--fusor:mount:0-->"), "{markup}");
+    }
+    let mixed =
+        format!("{STATE}<main rust:component=Counter><Child><b>text</b>{content}</Child></main>");
+    let error = extract(&mixed).unwrap_err();
+    assert_eq!(
+        error.message,
+        "do not mix named content and ordinary children in one invocation"
+    );
+}
+
+/// Prelude names the generated code must spell by path, because an application
+/// module may shadow them (`enum Choice { Some, None }` with a glob import).
+fn unqualified_prelude_names(tokens: proc_macro2::TokenStream, found: &mut Vec<String>) {
+    let mut previous_colon = false;
+    for token in tokens {
+        match &token {
+            proc_macro2::TokenTree::Group(group) => {
+                unqualified_prelude_names(group.stream(), found)
+            }
+            proc_macro2::TokenTree::Ident(ident)
+                if !previous_colon
+                    && [
+                        "Some", "None", "Ok", "Err", "Option", "Result", "String", "Vec",
+                    ]
+                    .contains(&ident.to_string().as_str()) =>
+            {
+                found.push(ident.to_string());
+            }
+            _ => {}
+        }
+        previous_colon = matches!(&token, proc_macro2::TokenTree::Punct(p) if p.as_char() == ':');
+    }
+}
+
+#[test]
+fn generated_code_names_prelude_items_by_path() {
+    for markup in [
+        // Server rendering: children, a branch and a keyed child.
+        r#"<main rust:component="Counter" rust:render="server"><Panel><p>{{ state.count }}</p></Panel><If condition="{{ state.open }}"><p>open</p><Else><p>closed</p></Else></If></main>"#,
+        // Coherent browser rendering: a keyed child inside an Async boundary.
+        r#"<main rust:component="Counter"><Async><section><Await value="{{ state.read }}" let="result"><div><Child value="{{ result.clone() }}" rust:key="state.key.get()"></Child></div></Await></section></Async></main>"#,
+        // Shared rendering emits both lowerings.
+        r#"<main rust:component="Counter" rust:render="shared"><Panel><b>{{ state.count }}</b></Panel></main>"#,
+    ] {
+        let page = extract(&format!("{STATE}{markup}"))
+            .unwrap_or_else(|error| panic!("{markup}: {error}"));
+        let mut found = Vec::new();
+        unqualified_prelude_names(page.rust.parse().unwrap(), &mut found);
+        assert!(found.is_empty(), "{markup}: {found:?}");
+    }
+}
+
+#[test]
+fn hydrated_components_in_rows_keep_their_type_outside_lexical_aliases() {
+    let page = extract(&format!(
+        r#"{STATE}<main rust:component="Counter" rust:render="server"><ul><ForEach items="{{{{ state.items }}}}" key="{{{{ |item| item.id }}}}"><li><Cart hydrate="load" product_id="{{{{ item.get().id }}}}" title="Row"></Cart></li></ForEach></ul></main>"#
+    ))
+    .unwrap();
+    let rust = tokens(&page.rust);
+    assert!(page.rust.contains("prepare_island :: < Cart > ("), "{rust}");
+    assert!(rust.contains(&tokens("<Cart as ::fusor_islands::Island> ::Props")));
+    assert!(rust.contains(&tokens(r#"title: ::core::convert::Into::into("Row")"#)));
 }

@@ -10,6 +10,31 @@ pub(crate) fn tokens(source: &str) -> impl Iterator<Item = Token<usize>> + '_ {
         .map(|token| token.expect("tokenizing an in-memory string is infallible"))
 }
 
+/// Whether markup holds only whitespace and comments, which render nothing.
+pub(crate) fn is_blank(html: &str) -> bool {
+    tokens(html).all(|token| match token {
+        Token::String(text) => text.iter().all(u8::is_ascii_whitespace),
+        Token::Comment(_) | Token::Error(_) => true,
+        _ => false,
+    })
+}
+
+/// html5gum spans an attribute from its name. Skip the name, `=` and an opening
+/// quote to find where the value starts in the source.
+pub(crate) fn value_start(source: &str, attribute: usize) -> usize {
+    let rest = &source[attribute..];
+    let name = rest
+        .find(|ch: char| ch.is_ascii_whitespace() || matches!(ch, '=' | '/' | '>'))
+        .unwrap_or(rest.len());
+    let after_name = rest[name..].trim_start();
+    let Some(value) = after_name.strip_prefix('=') else {
+        return attribute + name;
+    };
+    let value = value.trim_start();
+    let quoted = value.strip_prefix(['"', '\'']).unwrap_or(value);
+    source.len() - quoted.len()
+}
+
 pub(crate) fn attribute(tag: &StartTag<usize>, name: &[u8]) -> Option<String> {
     tag.attributes
         .get(name)
