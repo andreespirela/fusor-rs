@@ -1,22 +1,12 @@
 //! Structural async inputs; embedded expressions remain native Rust tokens.
-use super::{tag_input::TagInput, tokens::Rust};
+use super::{ir::RegionKind, tag_input::TagInput, tokens::Rust};
 use crate::ExtractError;
 
-pub(super) enum Declaration {
-    Async { value: Rust },
-    Await { value: Rust, alias: Rust },
-}
-
-impl Declaration {
-    pub fn alias(&self) -> Option<&Rust> {
-        match self {
-            Self::Async { .. } => None,
-            Self::Await { alias, .. } => Some(alias),
-        }
-    }
-}
-
-pub(super) fn inputs(input: &TagInput, await_value: bool) -> Result<Declaration, ExtractError> {
+/// An `Async` tag's boundary, or an `Await` tag's read and the name of its value.
+pub(super) fn inputs(
+    input: &TagInput,
+    await_value: bool,
+) -> Result<(Rust, RegionKind), ExtractError> {
     input.closed()?;
     if await_value {
         input.accepts(
@@ -26,10 +16,8 @@ pub(super) fn inputs(input: &TagInput, await_value: bool) -> Result<Declaration,
         let alias = input
             .binding("let")?
             .ok_or_else(|| input.error("Await requires let=\"name\" to name its resolved value"))?;
-        Ok(Declaration::Await {
-            value: input.expression("value")?,
-            alias,
-        })
+        let kind = RegionKind::Await { alias: Some(alias) };
+        Ok((input.expression("value")?, kind))
     } else {
         input.accepts(
             &["boundary"],
@@ -39,9 +27,9 @@ pub(super) fn inputs(input: &TagInput, await_value: bool) -> Result<Declaration,
             Some(value) => value,
             None => Rust::synthetic(
                 quote::quote! { ::fusor::coherence::AsyncBoundary::coherent() },
-                input.offset(),
+                input.tag.span.start,
             ),
         };
-        Ok(Declaration::Async { value })
+        Ok((value, RegionKind::Boundary))
     }
 }

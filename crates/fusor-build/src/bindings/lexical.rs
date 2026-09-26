@@ -7,7 +7,7 @@ use super::{
 use quote::quote;
 
 pub(super) fn rewrite(component: &mut Component) {
-    if component.locals.is_empty()
+    if component.row_locals.is_empty()
         && component.route_locals.is_empty()
         && component.snapshot_locals.is_empty()
     {
@@ -20,12 +20,12 @@ pub(super) fn rewrite(component: &mut Component) {
         let snapshots = &component.snapshot_locals;
         let snapshot_reads = quote! { #(let #snapshots = #snapshots.get();)* };
         let params = clone_locals(params);
-        if component.locals.is_empty() {
+        if component.row_locals.is_empty() {
             value.tokens = quote! {{ #snapshot_reads #params #original }};
             return;
         }
         aliases.push(quote! { #snapshot_reads #params });
-        let depth = component.locals.len();
+        let depth = component.row_locals.len();
         let contexts: Vec<_> = (0..depth).map(|i| indexed("context", i)).collect();
         let first = &contexts[0];
         aliases.push(quote! { let #first = &state; });
@@ -34,7 +34,7 @@ pub(super) fn rewrite(component: &mut Component) {
             let current = &contexts[i];
             aliases.push(quote! { let #current = &#prev.parent; });
         }
-        for ((item, index), context) in component.locals.iter().zip(contexts.iter().rev()) {
+        for ((item, index), context) in component.row_locals.iter().zip(contexts.iter().rev()) {
             let index =
                 (!component.item_only_row).then(|| quote! { let #index = &#context.index; });
             aliases.push(quote! { let #item = &#context.item; #index });
@@ -51,77 +51,58 @@ pub(super) fn rewrite(component: &mut Component) {
         }
         wrap(value);
     };
-    fn visit(bindings: &mut [Binding], wrap: &impl Fn(&mut Rust), wrap_text: &impl Fn(&mut Rust)) {
-        for binding in bindings {
-            match binding {
-                Binding::Children { .. } | Binding::Router { .. } => {}
-                Binding::Branch { value, .. } => wrap(value),
-                Binding::ForEach { items, key, .. } => {
-                    wrap(items);
-                    wrap(key);
-                }
-                Binding::Invocation {
-                    inputs,
-                    condition,
-                    key,
-                    ..
-                } => {
-                    for input in inputs {
-                        if let InputValue::Expression(value) = &mut input.value {
-                            wrap(value);
-                        }
-                    }
-                    if let Some(v) = condition {
-                        wrap(v)
-                    }
-                    if let Some(v) = key {
-                        wrap(v)
-                    }
-                }
-                Binding::Region {
-                    value, bindings, ..
-                } => {
-                    wrap(value);
-                    visit(bindings, wrap, wrap_text);
-                }
-                Binding::Text { value, .. } => wrap_text(value),
-                Binding::Property { value, .. }
-                | Binding::Boolean { value, .. }
-                | Binding::Checked { value, .. }
-                | Binding::Class { value, .. }
-                | Binding::Input { value, .. }
-                | Binding::Field { value, .. } => wrap(value),
-                Binding::Attribute { value, .. } | Binding::Value { value, .. } => {
-                    for part in &mut value.0 {
-                        if let StringPart::Expression(value) = part {
-                            wrap_text(value)
-                        }
-                    }
-                }
-                Binding::Event { handler, .. } => wrap(handler),
-                Binding::Slot {
-                    content: constructor,
-                    condition,
-                    key,
-                    ..
-                } => {
-                    wrap(constructor);
-                    if let Some(v) = condition {
-                        wrap(v)
-                    }
-                    if let Some(v) = key {
-                        wrap(v)
-                    }
-                }
-                Binding::Island { inputs, .. } => {
-                    for input in inputs {
-                        if let InputValue::Expression(value) = &mut input.value {
-                            wrap(value);
-                        }
-                    }
+    let mut visit = |binding: &mut Binding| match binding {
+        Binding::Children { .. } | Binding::Router { .. } => {}
+        Binding::Branch { value, .. }
+        | Binding::Region { value, .. }
+        | Binding::Property { value, .. }
+        | Binding::Boolean { value, .. }
+        | Binding::Checked { value, .. }
+        | Binding::Class { value, .. }
+        | Binding::Input { value, .. }
+        | Binding::Field { value, .. }
+        | Binding::Event { handler: value, .. } => wrap(value),
+        Binding::ForEach { items, key, .. } => {
+            wrap(items);
+            wrap(key);
+        }
+        Binding::Invocation {
+            inputs,
+            condition,
+            key,
+            ..
+        } => {
+            expressions(inputs).for_each(&wrap);
+            condition.iter_mut().chain(key).for_each(&wrap);
+        }
+        Binding::Slot {
+            content,
+            condition,
+            key,
+            ..
+        } => {
+            wrap(content);
+            condition.iter_mut().chain(key).for_each(&wrap);
+        }
+        Binding::Island { inputs, .. } => expressions(inputs).for_each(&wrap),
+        Binding::Text { value, .. } => wrap_text(value),
+        Binding::Attribute { value, .. } | Binding::Value { value, .. } => {
+            for part in &mut value.0 {
+                if let StringPart::Expression(value) = part {
+                    wrap_text(value)
                 }
             }
         }
-    }
-    visit(&mut component.bindings, &wrap, &wrap_text);
+    };
+    Binding::visit_mut(&mut component.bindings, &mut visit);
+}
+
+/// The `{{ expression }}` inputs of a component tag; literals and content hold no locals.
+fn expressions(inputs: &mut [Input]) -> impl Iterator<Item = &mut Rust> {
+    inputs
+        .iter_mut()
+        .filter_map(|input| match &mut input.value {
+            InputValue::Expression(value) => Some(value),
+            _ => None,
+        })
 }

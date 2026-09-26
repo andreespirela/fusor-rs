@@ -1,13 +1,9 @@
 //! Lower the binding plan into native Rust token trees.
 
 mod template;
-mod values;
-
-pub(super) use values::string;
-use values::typed_text_eligible;
 
 use super::{
-    emit::{self, clone_locals, element, indexed, point, text},
+    emit::{self, clone_locals, element, indexed, point, string, text},
     ir::*,
     tokens::{self, Origins, Rust},
 };
@@ -16,6 +12,21 @@ use fusor::template::{ElementId, MountId, RootKind, TextId};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
 use std::collections::BTreeMap;
+
+// The typed path changes the generated closure's result representation. Keep
+// the original String result when authored code can return from that closure;
+// opaque macros and attributes may introduce such a return after expansion.
+pub(super) fn typed_text_eligible(value: &Rust) -> bool {
+    fn transparent(tokens: TokenStream) -> bool {
+        tokens.into_iter().all(|token| match token {
+            proc_macro2::TokenTree::Group(group) => transparent(group.stream()),
+            proc_macro2::TokenTree::Ident(ident) => ident != "return",
+            proc_macro2::TokenTree::Punct(punct) => !matches!(punct.as_char(), '!' | '#'),
+            proc_macro2::TokenTree::Literal(_) => true,
+        })
+    }
+    transparent(value.tokens.clone())
+}
 
 /// What every lowering in one generation pass shares.
 #[derive(Clone, Copy)]
@@ -344,30 +355,24 @@ fn invocation(
     let point = point(*id);
     let condition = emit::or(condition.as_ref(), quote! { true });
     let key = emit::or(key.as_ref(), quote! { () });
-    let fields = inputs.iter().map(|input| {
-        let name = &input.name;
-        let value = match &input.value {
-            InputValue::Expression(value) | InputValue::Literal(value) => {
-                quote_spanned! {value.span()=> { #value } }
-            }
-            InputValue::Content {
-                component: index,
-                origin,
-            } => {
-                let prepare = ctx.component(*index);
-                let span = origin.span();
-                let handoff = handoff(span, quote_spanned! {span=> state });
-                let restore = restore(span);
-                quote_spanned! {span=> {
-                    #handoff
-                    ::fusor::dom::Content::from_prepared(move |__fusor_parent| {
-                        #restore
-                        #prepare
-                    })
-                }}
-            }
-        };
-        quote_spanned! {name.span()=> #name: #value }
+    let fields = emit::fields(inputs, |value| match value {
+        InputValue::Content {
+            component: index,
+            origin,
+        } => {
+            let prepare = ctx.component(*index);
+            let span = origin.span();
+            let handoff = handoff(span, quote_spanned! {span=> state });
+            let restore = restore(span);
+            quote_spanned! {span=> {
+                #handoff
+                ::fusor::dom::Content::from_prepared(move |__fusor_parent| {
+                    #restore
+                    #prepare
+                })
+            }}
+        }
+        value => emit::braced(value),
     });
     let construct = emit::from_inputs(span, ty, fields);
     if coherent {
@@ -446,7 +451,7 @@ fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
             }
         }
         Binding::Text { .. } | Binding::Attribute { .. } | Binding::Event { .. } => {
-            scoped(binding, &Nodes::Handles).expect("scoped binding")
+            scoped(binding, None).expect("scoped binding")
         }
         Binding::Property { node, name, value } => {
             let node = element(*node);
@@ -582,113 +587,68 @@ fn router(
     }}
 }
 
-/// Where an ordinary binding reaches its nodes: the typed handles, or the
-/// ordinals of the binding bundle the server delivered.
-enum Nodes<'a> {
-    Handles,
-    Bundle {
-        elements: &'a BTreeMap<ElementId, u32>,
-        texts: &'a BTreeMap<TextId, u32>,
-    },
+/// The ordinals of the binding bundle the server delivered, which stand in for
+/// the typed handles.
+struct Bundle<'a> {
+    elements: &'a BTreeMap<ElementId, u32>,
+    texts: &'a BTreeMap<TextId, u32>,
 }
 
-impl Nodes<'_> {
-    /// Call `handle` on a typed node, or `bundle` on its bundle ordinal.
-    fn call(
-        &self,
-        span: Span,
-        node: Node,
-        [handle, bundle]: [&str; 2],
-        arguments: TokenStream,
-    ) -> TokenStream {
-        match self {
-            Nodes::Handles => {
-                let method = Ident::new(handle, span);
-                let node = match node {
-                    Node::Element(id) => element(id),
-                    Node::Text(id) => text(id),
-                };
-                quote_spanned! {span=> __fusor_scope.#method(&#node, #arguments)?; }
-            }
-            Nodes::Bundle { elements, texts } => {
-                let method = Ident::new(bundle, span);
-                let slot = match node {
-                    Node::Element(id) => elements[&id],
-                    Node::Text(id) => texts[&id],
-                };
-                quote_spanned! {span=> __fusor_scope.#method(&__fusor_bundle, #slot, #arguments)?; }
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-enum Node {
-    Element(ElementId),
-    Text(TextId),
+/// Call a scope method on the anchor's typed handle, or with a bundle, its
+/// `bundle_` counterpart on the anchor's ordinal.
+fn scope_call(
+    span: Span,
+    anchor: Anchor,
+    bundle: Option<&Bundle>,
+    method: &str,
+    arguments: TokenStream,
+) -> TokenStream {
+    let Some(bundle) = bundle else {
+        let method = Ident::new(method, span);
+        let node = emit::handle(anchor);
+        return quote_spanned! {span=> __fusor_scope.#method(&#node, #arguments)?; };
+    };
+    let method = format_ident!("bundle_{}", method, span = span);
+    let slot = match anchor {
+        Anchor::Element(id) => bundle.elements[&id],
+        Anchor::Text(id) => bundle.texts[&id],
+        Anchor::Mount(_) => unreachable!("bundles hold elements and text"),
+    };
+    quote_spanned! {span=> __fusor_scope.#method(&__fusor_bundle, #slot, #arguments)?; }
 }
 
 /// Text, attribute and event bindings, which the ordinary and bundle paths
-/// install the same way. Other bindings return `None`.
-fn scoped(binding: &Binding, nodes: &Nodes) -> Option<TokenStream> {
+/// install the same way. Other bindings return `None`: they need typed handles,
+/// managed lifetimes or a coherent frame.
+fn scoped(binding: &Binding, bundle: Option<&Bundle>) -> Option<TokenStream> {
     let span = binding.span();
-    Some(match binding {
-        Binding::Text { slot, value } => {
-            if typed_text_eligible(value) {
-                nodes.call(
-                    span,
-                    Node::Text(*slot),
-                    ["text_node_value", "bundle_text_value"],
-                    quote_spanned! {span=> move || {
-                        use ::fusor::dom::text_value::Convert as _;
-                        (&::fusor::dom::text_value::Value(&(#value))).__fusor_into_text()
-                    }},
-                )
-            } else {
-                nodes.call(
-                    span,
-                    Node::Text(*slot),
-                    ["text_node_string", "bundle_text_string"],
-                    quote_spanned! {span=> move || ::std::string::ToString::to_string(&(#value)) },
-                )
-            }
-        }
-        Binding::Attribute { node, name, value } => {
+    let anchor = binding.anchor();
+    let (method, arguments) = match binding {
+        Binding::Text { value, .. } if typed_text_eligible(value) => (
+            "text_node_value",
+            quote_spanned! {span=> move || {
+                use ::fusor::dom::text_value::Convert as _;
+                (&::fusor::dom::text_value::Value(&(#value))).__fusor_into_text()
+            }},
+        ),
+        Binding::Text { value, .. } => (
+            "text_node_string",
+            quote_spanned! {span=> move || ::std::string::ToString::to_string(&(#value)) },
+        ),
+        Binding::Attribute { name, value, .. } => {
             let value = string(value);
-            nodes.call(
-                span,
-                Node::Element(*node),
-                ["attr", "bundle_attr"],
+            (
+                "attr",
                 quote_spanned! {span=> #name, move || ::std::option::Option::Some(#value) },
             )
         }
-        Binding::Event {
-            node,
-            name,
-            handler,
-        } => nodes.call(
-            span,
-            Node::Element(*node),
-            ["on", "bundle_on"],
+        Binding::Event { name, handler, .. } => (
+            "on",
             quote_spanned! {span=> #name, move |event| { #handler } },
         ),
-        // These need typed handles, managed lifetimes or a coherent frame.
-        Binding::Branch { .. }
-        | Binding::Router { .. }
-        | Binding::ForEach { .. }
-        | Binding::Children { .. }
-        | Binding::Invocation { .. }
-        | Binding::Island { .. }
-        | Binding::Region { .. }
-        | Binding::Property { .. }
-        | Binding::Boolean { .. }
-        | Binding::Value { .. }
-        | Binding::Checked { .. }
-        | Binding::Class { .. }
-        | Binding::Input { .. }
-        | Binding::Field { .. }
-        | Binding::Slot { .. } => return None,
-    })
+        _ => return None,
+    };
+    Some(scope_call(span, anchor, bundle, method, arguments))
 }
 
 fn component(component: &Component, ctx: Ctx) -> TokenStream {
@@ -741,14 +701,7 @@ fn forwarding_row(component: &Component, ctx: Ctx) -> Option<TokenStream> {
         return None;
     };
     let local_clones = clone_locals(&component.async_locals);
-    let fields = inputs.iter().map(|input| {
-        let name = &input.name;
-        let value = input
-            .value
-            .value()
-            .expect("scoped content rejected by parser");
-        quote! { #name: { #value } }
-    });
+    let fields = emit::fields(inputs, emit::braced);
     let construct = emit::from_inputs(Span::call_site(), ty, fields);
     let supplied = children_factory(*children, ctx);
     Some(quote! {{

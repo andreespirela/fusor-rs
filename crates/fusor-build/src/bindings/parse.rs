@@ -22,9 +22,6 @@ use std::ops::Range;
 const MIXED_CONTENT: &str = "do not mix named content and ordinary children in one invocation";
 const OWNED_EMPTY: &str = "an owned host or hydrated component must be empty; its registered renderer supplies its contents";
 const CONTROL_CHILDREN: &str = "Match accepts only Case children; Else must be last in If";
-const ASYNC_CLOSING: &str =
-    "Async and Await require matching closing tags and exactly one native HTML root";
-const ROUTER_CLOSING: &str = "Router and Route closing tags must match their spelling";
 pub(super) const HYDRATE_SERVER: &str = "hydrate requires a server-rendered component";
 
 // Async wrappers collect a single native root; a second root stays invalid
@@ -35,21 +32,20 @@ enum AsyncRoot {
     Multiple,
 }
 
+/// An `Async` or `Await` tag; its bindings start at `start` in the owner.
 struct AsyncFrame {
     start: usize,
-    declaration: super::async_tags::Declaration,
+    value: Rust,
+    kind: RegionKind,
     root: AsyncRoot,
 }
 
+/// A `rust:async` or `rust:await` element; its bindings start at `start`.
 struct Region {
     start: usize,
     node: ElementId,
-    directive: RegionDirective,
-}
-
-enum RegionDirective {
-    Async(Rust),
-    Await(Rust),
+    value: Rust,
+    kind: RegionKind,
 }
 
 #[derive(Clone, Copy)]
@@ -63,12 +59,12 @@ struct BranchRef {
 struct NewCase {
     pattern: Rust,
     names: Vec<Rust>,
-    locals: Vec<Rust>,
-    aliases: Vec<Rust>,
+    async_locals: Vec<Rust>,
+    route_locals: Vec<Rust>,
 }
 
-/// Open a body for `case` and add the case to its Branch. The body reads the
-/// Branch's Await snapshots.
+/// Open a body for `case` and add the case to its Branch. The body renders in
+/// the Branch owner's place and reads the Branch's Await snapshots.
 fn push_case(
     components: &mut Vec<Component>,
     first_component: usize,
@@ -76,28 +72,36 @@ fn push_case(
     offset: usize,
     case: NewCase,
 ) -> usize {
-    let body = super::control::body(
-        components,
-        branch.owner,
-        first_component,
-        offset,
-        case.locals,
-        case.aliases,
-    );
-    let Binding::Branch {
-        cases, snapshots, ..
-    } = &mut components[branch.owner].bindings[branch.binding]
+    let owner = &components[branch.owner];
+    let Binding::Branch { snapshots, .. } = &owner.bindings[branch.binding] else {
+        unreachable!("branch binding")
+    };
+    let index = components.len();
+    let id = ComponentId::new(first_component + index);
+    let body = Component {
+        row_locals: owner.row_locals.clone(),
+        async_locals: case.async_locals,
+        route_locals: case.route_locals,
+        snapshot_locals: snapshots.iter().map(|(name, _)| name.clone()).collect(),
+        ..Component::new(
+            id,
+            Rust::ident(&format!("__FusorBranch{}", id.index()), offset),
+            ComponentShape::Fragment(owner.ty.clone()),
+            owner.render,
+            offset..offset,
+        )
+    };
+    components.push(body);
+    let Binding::Branch { cases, .. } = &mut components[branch.owner].bindings[branch.binding]
     else {
         unreachable!("branch binding")
     };
-    let snapshot_locals = snapshots.iter().map(|(name, _)| name.clone()).collect();
     cases.push(CaseBranch {
         pattern: case.pattern,
         names: case.names,
-        body,
+        body: index,
     });
-    components[body].snapshot_locals = snapshot_locals;
-    body
+    index
 }
 
 /// If and Match need an ordinary container: the HTML parser relocates or
@@ -118,7 +122,7 @@ fn branch_snapshots(stack: &[Frame], snapshot_locals: &[Rust]) -> Vec<(Rust, Rus
     stack
         .iter()
         .filter_map(|frame| match &frame.kind {
-            FrameKind::Async(region) => region.declaration.alias().cloned(),
+            FrameKind::Async(region) => region.kind.alias().cloned(),
             _ => None,
         })
         .map(|alias| {
@@ -161,73 +165,26 @@ enum ControlFrame {
     Case { aliases: Vec<Rust> },
 }
 
-impl ControlFrame {
-    fn spelling(&self) -> &'static str {
-        match self {
-            Self::If { .. } => BuiltIn::If.spelling(),
-            Self::Else => BuiltIn::Else.spelling(),
-            Self::Match { .. } => BuiltIn::Match.spelling(),
-            Self::Case { .. } => BuiltIn::Case.spelling(),
-        }
-    }
-}
-
-// A built-in's closing tag must repeat its spelling; its edit replaces the tag.
-struct Closing<'a> {
-    spelling: &'a str,
-    message: &'static str,
-    replacement: &'static str,
-}
-
-impl FrameKind {
-    fn closing(&self) -> Option<Closing<'_>> {
-        let (spelling, message, replacement) = match self {
-            Self::Element(_) => return None,
-            Self::Control(control) => (
-                control.spelling(),
-                "control-flow closing tags must match their spelling",
-                "",
-            ),
-            Self::Async(region) => (
-                match region.declaration {
-                    super::async_tags::Declaration::Async { .. } => BuiltIn::Async.spelling(),
-                    super::async_tags::Declaration::Await { .. } => BuiltIn::Await.spelling(),
-                },
-                ASYNC_CLOSING,
-                "",
-            ),
-            Self::Router { .. } => (BuiltIn::Router.spelling(), ROUTER_CLOSING, ""),
-            Self::Route { .. } => (BuiltIn::Route.spelling(), ROUTER_CLOSING, ""),
-            Self::Invocation(invocation) => (
-                invocation.authored.as_str(),
-                "component closing tags must match the Rust type path's case",
-                "",
-            ),
-            Self::Hydrated { authored } => (
-                authored.as_str(),
-                "hydrated component closing tags must match their Rust spelling",
-                "</div>",
-            ),
-            Self::App => (
-                BuiltIn::App.spelling(),
-                "App closing tag must match its spelling",
-                "",
-            ),
-            Self::ForEach => (
-                BuiltIn::ForEach.spelling(),
-                "ForEach closing tag must match its spelling",
-                "</template>",
-            ),
-            Self::Children => (
-                BuiltIn::Children.spelling(),
-                "Children closing tag must match its spelling",
-                "",
-            ),
+impl Frame {
+    /// A built-in or component closing tag must repeat its opening spelling.
+    /// Returns that spelling and what replaces the closing tag.
+    fn closing(&self) -> Option<(&str, &'static str)> {
+        let builtin = || {
+            BuiltIn::classify(&self.name)
+                .expect("built-in frame")
+                .spelling()
         };
-        Some(Closing {
-            spelling,
-            message,
-            replacement,
+        Some(match &self.kind {
+            FrameKind::Element(_) => return None,
+            FrameKind::Invocation(invocation) => (invocation.authored.as_str(), ""),
+            FrameKind::Hydrated { authored } => (authored.as_str(), "</div>"),
+            FrameKind::ForEach => (builtin(), "</template>"),
+            FrameKind::Control(_)
+            | FrameKind::Async(_)
+            | FrameKind::App
+            | FrameKind::Children
+            | FrameKind::Router { .. }
+            | FrameKind::Route { .. } => (builtin(), ""),
         })
     }
 }
@@ -357,7 +314,7 @@ impl Frame {
             FrameKind::Control(ControlFrame::Case { aliases }) => aliases,
             FrameKind::Route { alias } => alias.as_slice(),
             FrameKind::Async(region) if include_await => {
-                region.declaration.alias().map_or(&[], std::slice::from_ref)
+                region.kind.alias().map_or(&[], std::slice::from_ref)
             }
             _ => &[],
         }
@@ -717,12 +674,12 @@ impl Parser<'_> {
                 "nested Async boundaries are unsupported; Await automatically uses its enclosing boundary",
             ));
         }
-        let input = TagInput::new(source, &tag, builtin.expect("async built-in"));
-        let declaration = super::async_tags::inputs(&input, awaiting)?;
-        if declaration.alias().is_some_and(|alias| {
+        let input = TagInput::new(source, &tag, builtin.expect("async built-in").spelling());
+        let (value, kind) = super::async_tags::inputs(&input, awaiting)?;
+        if kind.alias().is_some_and(|alias| {
             async_locals.iter().any(|name| name.same_tokens(alias))
                 || components[owner]
-                    .locals
+                    .row_locals
                     .iter()
                     .any(|(item, index)| item.same_tokens(alias) || index.same_tokens(alias))
         }) {
@@ -739,7 +696,8 @@ impl Parser<'_> {
             ElementId::new(*node),
             FrameKind::Async(AsyncFrame {
                 start: components[owner].bindings.len(),
-                declaration,
+                value,
+                kind,
                 root: AsyncRoot::Missing,
             }),
         ));
@@ -799,7 +757,7 @@ impl Parser<'_> {
                 "App must be a top-level application boundary, outside components and inert or foreign HTML",
             ));
         }
-        let input = TagInput::new(source, &tag, BuiltIn::App);
+        let input = TagInput::new(source, &tag, BuiltIn::App.spelling());
         input.closed()?;
         input.accepts(
             &["state"],
@@ -863,7 +821,7 @@ impl Parser<'_> {
             ));
         }
         let (items, key, item, index) =
-            super::foreach::inputs(&TagInput::new(source, &tag, BuiltIn::ForEach))?;
+            super::foreach::inputs(&TagInput::new(source, &tag, BuiltIn::ForEach.spelling()))?;
         if async_locals
             .iter()
             .any(|alias| alias.same_tokens(&item) || alias.same_tokens(&index))
@@ -877,8 +835,8 @@ impl Parser<'_> {
 
         let id = ComponentId::new(first_component + components.len());
         let body = components.len();
-        let mut locals = components[caller].locals.clone();
-        locals.push((item, index));
+        let mut row_locals = components[caller].row_locals.clone();
+        row_locals.push((item, index));
         let render = components[caller].render;
         components[caller].bindings.push(Binding::ForEach {
             node: parent.node,
@@ -887,7 +845,7 @@ impl Parser<'_> {
             body,
         });
         components.push(Component {
-            locals,
+            row_locals,
             ..lexicals.open(Component::new(
                 id,
                 Rust::ident(&format!("__FusorForEach{}", id.index()), tag.span.start),
@@ -1005,7 +963,7 @@ impl Parser<'_> {
                 "If and Match belong inside an ordinary native HTML container, outside table/select/SVG/MathML parsing contexts",
             ));
         }
-        let input = TagInput::new(source, &tag, builtin.expect("control built-in"));
+        let input = TagInput::new(source, &tag, builtin.expect("control built-in").spelling());
         let attribute = if builtin == Some(BuiltIn::If) {
             "condition"
         } else {
@@ -1029,8 +987,8 @@ impl Parser<'_> {
             let case = NewCase {
                 pattern: Rust::synthetic(quote::quote! { true }, tag.span.start),
                 names: Vec::new(),
-                locals: async_locals.clone(),
-                aliases: route_locals.clone(),
+                async_locals: async_locals.clone(),
+                route_locals: route_locals.clone(),
             };
             let body = push_case(components, first_component, branch, tag.span.end, case);
             let control = ControlFrame::If {
@@ -1082,7 +1040,7 @@ impl Parser<'_> {
             )
         })?;
         let caller = branch.owner;
-        let input = TagInput::new(source, &tag, builtin.expect("control built-in"));
+        let input = TagInput::new(source, &tag, builtin.expect("control built-in").spelling());
         let (pattern, names) = if builtin == Some(BuiltIn::Case) {
             super::control::pattern(&input)?
         } else {
@@ -1095,7 +1053,12 @@ impl Parser<'_> {
         for alias in &names {
             if async_locals
                 .iter()
-                .chain(components[caller].locals.iter().flat_map(|(a, b)| [a, b]))
+                .chain(
+                    components[caller]
+                        .row_locals
+                        .iter()
+                        .flat_map(|(a, b)| [a, b]),
+                )
                 .any(|other| other.same_tokens(alias))
             {
                 return Err(error(
@@ -1108,8 +1071,8 @@ impl Parser<'_> {
         let case = NewCase {
             pattern,
             names: names.clone(),
-            locals: async_locals.iter().chain(&names).cloned().collect(),
-            aliases: route_locals.iter().chain(&names).cloned().collect(),
+            async_locals: async_locals.iter().chain(&names).cloned().collect(),
+            route_locals: route_locals.iter().chain(&names).cloned().collect(),
         };
         let frame_owner = push_case(components, first_component, branch, tag.span.end, case);
         let control = if builtin == Some(BuiltIn::Case) {
@@ -1167,7 +1130,7 @@ impl Parser<'_> {
                 "Children belongs inside the component's native HTML root",
             ));
         }
-        if components[owner].app().is_some() || !components[owner].locals.is_empty() {
+        if components[owner].app().is_some() || !components[owner].row_locals.is_empty() {
             return Err(error(
                 source,
                 tag.span.start,
@@ -1313,7 +1276,7 @@ impl Parser<'_> {
         };
         let binding = *binding;
         let super::router_tags::Declaration { path, alias, names } =
-            super::router_tags::route(&TagInput::new(source, &tag, BuiltIn::Route))?;
+            super::router_tags::route(&TagInput::new(source, &tag, BuiltIn::Route.spelling()))?;
         let Binding::Router { routes, .. } = &components[owner].bindings[binding] else {
             unreachable!()
         };
@@ -1321,7 +1284,7 @@ impl Parser<'_> {
         if alias.as_ref().is_some_and(|alias| {
             async_locals.iter().any(|other| other.same_tokens(alias))
                 || components[owner]
-                    .locals
+                    .row_locals
                     .iter()
                     .any(|(a, b)| [a, b].iter().any(|other| other.same_tokens(alias)))
         }) {
@@ -1340,7 +1303,7 @@ impl Parser<'_> {
             route_bindings.push(alias.clone());
         }
         components.push(Component {
-            locals: components[owner].locals.clone(),
+            row_locals: components[owner].row_locals.clone(),
             async_locals: captured_locals,
             route_locals: route_bindings,
             snapshot_locals: snapshot_locals.clone(),
@@ -1479,7 +1442,7 @@ impl Parser<'_> {
         let point = MountId::new(*mount);
         *mount += 1;
         let binding = components[owner].bindings.len();
-        let mut invocation = super::tags::invocation(source, &tag, point)?;
+        let mut invocation = super::tags::invocation(source, &tag, point, false)?;
         if parent.is_some_and(|frame| matches!(frame.kind, FrameKind::ForEach))
             && matches!(
                 &invocation,
@@ -1499,9 +1462,9 @@ impl Parser<'_> {
         let id = ComponentId::new(first_component + fragment_index);
         let capture = components[owner].ty.clone();
         let render = components[owner].render;
-        let locals = components[owner].locals.clone();
+        let row_locals = components[owner].row_locals.clone();
         components.push(Component {
-            locals,
+            row_locals,
             ..lexicals.open(Component::new(
                 id,
                 Rust::ident(&format!("__FusorChildren{}", id.index()), tag.span.start),
@@ -1637,7 +1600,7 @@ impl Parser<'_> {
     ) -> Result<(), ExtractError> {
         let source = self.source;
         let components = &self.components;
-        if owner.is_some_and(|index| !components[index].locals.is_empty()) {
+        if owner.is_some_and(|index| !components[index].row_locals.is_empty()) {
             return Err(error(
                 source,
                 tag.span.start,
@@ -1889,10 +1852,11 @@ impl Parser<'_> {
         Ok(Some(Region {
             start: self.components[index].bindings.len(),
             node: ElementId::new(self.node),
-            directive: if await_attr.is_some() {
-                RegionDirective::Await(value)
+            value,
+            kind: if await_attr.is_some() {
+                RegionKind::Await { alias: None }
             } else {
-                RegionDirective::Async(value)
+                RegionKind::Boundary
             },
         }))
     }
@@ -2073,11 +2037,15 @@ impl Parser<'_> {
         let frame = self.stack.pop().expect("matched closing tag");
         // Spelling and close edits belong to the selected role. Native
         // HTML keeps its existing case-insensitive closing behavior.
-        if let Some(closing) = frame.kind.closing() {
-            if super::tags::name(source, tag.span.start) != closing.spelling {
-                return Err(error(source, tag.span.start, closing.message));
+        if let Some((spelling, replacement)) = frame.closing() {
+            if super::tags::name(source, tag.span.start) != spelling {
+                return Err(error(
+                    source,
+                    tag.span.start,
+                    format!("close {spelling} with </{spelling}>"),
+                ));
             }
-            self.edits.push(replace_tag(&tag.span, closing.replacement));
+            self.edits.push(replace_tag(&tag.span, replacement));
         }
         self.close(frame, &tag)
     }
@@ -2127,8 +2095,8 @@ impl Parser<'_> {
                 let case = NewCase {
                     pattern: Rust::synthetic(quote::quote! { false }, tag.span.start),
                     names: Vec::new(),
-                    locals: Vec::new(),
-                    aliases: Vec::new(),
+                    async_locals: Vec::new(),
+                    route_locals: Vec::new(),
                 };
                 push_case(components, first_component, branch, tag.span.start, case);
             }
@@ -2207,14 +2175,10 @@ impl Parser<'_> {
         if let Some(region) = element.region {
             let component = &mut components[owner.expect("region component")];
             let bindings = component.bindings.split_off(region.start);
-            let (value, kind) = match region.directive {
-                RegionDirective::Async(value) => (value, RegionKind::Boundary),
-                RegionDirective::Await(value) => (value, RegionKind::Await { alias: None }),
-            };
             component.bindings.push(Binding::Region {
                 node: region.node,
-                value,
-                kind,
+                value: region.value,
+                kind: region.kind,
                 bindings,
             });
         }
@@ -2229,20 +2193,18 @@ impl Parser<'_> {
         let source = self.source;
         let components = &mut self.components;
         let AsyncRoot::One(node) = region.root else {
-            return Err(error(source, tag.span.start, ASYNC_CLOSING));
-        };
-        let (value, kind) = match region.declaration {
-            super::async_tags::Declaration::Async { value } => (value, RegionKind::Boundary),
-            super::async_tags::Declaration::Await { value, alias } => {
-                (value, RegionKind::Await { alias: Some(alias) })
-            }
+            return Err(error(
+                source,
+                tag.span.start,
+                "Async and Await require exactly one native HTML root",
+            ));
         };
         let component = &mut components[owner.expect("async owner")];
         let bindings = component.bindings.split_off(region.start);
         component.bindings.push(Binding::Region {
             node,
-            value,
-            kind,
+            value: region.value,
+            kind: region.kind,
             bindings,
         });
         Ok(())

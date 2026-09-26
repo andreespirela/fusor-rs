@@ -39,10 +39,21 @@ pub(super) fn activation_target(id: &str) -> String {
     format!(" data-fusor-activate-target=\"{}\"", escape_attribute(id))
 }
 
-/// Escape a value for a double-quoted attribute written by the compiler.
+/// Escape a value for a double-quoted attribute written by the compiler, as the
+/// server writer escapes the attributes it renders.
 pub(super) fn escape_attribute(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
+    let mut escaped = String::with_capacity(value.len());
+    template::escape_into(&mut escaped, value, true);
+    escaped
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn compiler_attributes_escape_like_the_server_writer() {
+        assert_eq!(
+            super::escape_attribute(r#"a&b"c'd<e>f"#),
+            "a&amp;b&quot;c&#39;d&lt;e&gt;f"
+        );
+    }
 }

@@ -21,14 +21,20 @@ fn typed_text_keeps_original_closure_contract_for_returns_macros_and_attributes(
         ))
         .unwrap();
         let rust = tokens(&page.rust);
-        assert!(rust.contains("bundle_text_string"), "{expression}: {rust}");
-        assert!(!rust.contains("bundle_text_value"), "{expression}: {rust}");
+        assert!(
+            rust.contains("bundle_text_node_string"),
+            "{expression}: {rust}"
+        );
+        assert!(
+            !rust.contains("bundle_text_node_value"),
+            "{expression}: {rust}"
+        );
     }
     let page = extract(&format!(
         "{STATE}<p rust:component=Counter>{{{{ state.value.get() }}}}</p>"
     ))
     .unwrap();
-    assert!(tokens(&page.rust).contains("bundle_text_value"));
+    assert!(tokens(&page.rust).contains("bundle_text_node_value"));
 }
 
 #[test]
@@ -837,23 +843,27 @@ fn native_root_keeps_text_optimization_and_region_finalization_together() {
 
 #[test]
 fn async_root_and_spelling_errors_stay_on_the_authored_closing_tag() {
-    for (opening, body, closing) in [
-        ("<Async>", "", "</Async>"),
-        ("<Async>", "<section></section><aside></aside>", "</Async>"),
+    let root = "Async and Await require exactly one native HTML root";
+    for (opening, body, closing, message) in [
+        ("<Async>", "", "</Async>", root),
+        (
+            "<Async>",
+            "<section></section><aside></aside>",
+            "</Async>",
+            root,
+        ),
         (
             "<Await value=\"{{ state.read }}\" let=\"result\">",
             "<section></section>",
             "</await>",
+            "close Await with </Await>",
         ),
     ] {
         let source =
             format!("{STATE}\n<main rust:component=Counter>\n{opening}{body}\n{closing}\n</main>");
         let error = extract(&source).unwrap_err();
         assert_eq!((error.line, error.column), (4, 1), "{source}");
-        assert_eq!(
-            error.message,
-            "Async and Await require matching closing tags and exactly one native HTML root"
-        );
+        assert_eq!(error.message, message);
     }
 }
 
@@ -1078,10 +1088,7 @@ fn hydration_rejects_ambiguous_policies_placement_and_owned_contents() {
             "nonempty static",
         ),
         (r#"<Cart hydrate="load"/>"#, "explicit closing tag"),
-        (
-            r#"<Cart hydrate="load"></cart>"#,
-            "match their Rust spelling",
-        ),
+        (r#"<Cart hydrate="load"></cart>"#, "close Cart with </Cart>"),
         (r#"<Cart hydrate="load">lost</Cart>"#, "must be empty"),
         (
             r#"<Cart hydrate="load"><p>lost</p></Cart>"#,
@@ -1093,7 +1100,7 @@ fn hydration_rejects_ambiguous_policies_placement_and_owned_contents() {
         ),
         (
             r#"<Cart hydrate="load" hydrate:prefech="idle"></Cart>"#,
-            "unknown attribute hydrate:prefech; component tags accept hydrate, hydrate:id and hydrate:prefetch",
+            "unknown attribute hydrate:prefech; component tags accept hydrate, hydrate:id, hydrate:prefetch",
         ),
         (
             r#"<Cart hydrate:id="cart"></Cart>"#,
@@ -1181,10 +1188,10 @@ fn binding_bundle_uses_dense_ordinals_and_defers_typed_extraction_to_fallback() 
         "__fusor_scope.bundle_on(&__fusor_bundle, 1u32, \"click\", move |event| { state.click() })? ;"
     )));
     assert!(rust.contains(&tokens(
-        "__fusor_scope.bundle_text_value(&__fusor_bundle, 3u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.direct))).__fusor_into_text() })? ;"
+        "__fusor_scope.bundle_text_node_value(&__fusor_bundle, 3u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.direct))).__fusor_into_text() })? ;"
     )));
     assert!(rust.contains(&tokens(
-        "__fusor_scope.bundle_text_value(&__fusor_bundle, 2u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.anchored))).__fusor_into_text() })? ;"
+        "__fusor_scope.bundle_text_node_value(&__fusor_bundle, 2u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.anchored))).__fusor_into_text() })? ;"
     )));
     let branch = rust.find("take_binding_bundle").unwrap();
     assert!(branch < rust.find(&tokens("__fusor_nodes.take_element")).unwrap());
@@ -1256,13 +1263,13 @@ fn binding_bundle_keeps_large_flat_children_eligible_under_managed_parents() {
     assert!(!parent.contains("prepare_with_binding_bundle"));
     assert!(parent.contains("prepare_with_points"));
     assert!(child.contains("prepare_with_binding_bundle"));
-    assert_eq!(child.matches("bundle_text_value").count(), 512);
+    assert_eq!(child.matches("bundle_text_node_value").count(), 512);
     assert_eq!(child.matches("bundle_attr").count(), 256);
     assert!(child.contains(&tokens(
-        "__fusor_scope.bundle_text_value(&__fusor_bundle, 767u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.direct_255))).__fusor_into_text() })? ;"
+        "__fusor_scope.bundle_text_node_value(&__fusor_bundle, 767u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.direct_255))).__fusor_into_text() })? ;"
     )), "{child}");
     assert!(child.contains(&tokens(
-        "__fusor_scope.bundle_text_value(&__fusor_bundle, 511u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.anchored_255))).__fusor_into_text() })? ;"
+        "__fusor_scope.bundle_text_node_value(&__fusor_bundle, 511u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.anchored_255))).__fusor_into_text() })? ;"
     )));
 }
 
@@ -1699,4 +1706,17 @@ fn hydrated_components_in_rows_keep_their_type_outside_lexical_aliases() {
     assert!(page.rust.contains("prepare_island :: < Cart > ("), "{rust}");
     assert!(rust.contains(&tokens("<Cart as ::fusor_islands::Island> ::Props")));
     assert!(rust.contains(&tokens(r#"title: ::core::convert::Into::into("Row")"#)));
+}
+
+#[test]
+fn template_hash_covers_named_content() {
+    let hash = |text: &str| {
+        let page = extract(&format!(
+            r#"{STATE}<main rust:component="Counter"><Child><template rust:content="body"><p>{text}</p></template></Child></main>"#
+        ))
+        .unwrap();
+        let start = page.rust.find("__FUSOR_TEMPLATE_HASH_0 : & str =").unwrap();
+        page.rust[start..start + 110].to_owned()
+    };
+    assert_ne!(hash("first"), hash("second"));
 }

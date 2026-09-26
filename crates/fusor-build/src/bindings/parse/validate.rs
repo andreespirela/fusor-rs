@@ -1,4 +1,4 @@
-use crate::bindings::ir::{Binding, Component, InputValue, RenderTarget};
+use crate::bindings::ir::{Binding, Component, RenderTarget};
 use crate::{ExtractError, error};
 use std::collections::BTreeMap;
 
@@ -66,37 +66,19 @@ pub(super) fn components(
         }
     }
     fn count_children(bindings: &[Binding], components: &[Component]) -> usize {
-        bindings
-            .iter()
+        let count = |child: usize| count_children(&components[child].bindings, components);
+        Binding::walk(bindings)
+            .into_iter()
             .map(|binding| match binding {
                 Binding::Children { .. } => 1,
-                Binding::Branch { cases, .. } => cases
-                    .iter()
-                    .map(|case| count_children(&components[case.body].bindings, components))
+                // Cases and sibling routes are exclusive placements of the caller's children.
+                Binding::Branch { .. } | Binding::Router { .. } => binding
+                    .components()
+                    .into_iter()
+                    .map(count)
                     .max()
                     .unwrap_or(0),
-                // Sibling routes are exclusive placements of the caller's children.
-                Binding::Router { routes, .. } => routes
-                    .iter()
-                    .map(|route| count_children(&components[route.body].bindings, components))
-                    .max()
-                    .unwrap_or(0),
-                Binding::Region { bindings, .. } => count_children(bindings, components),
-                Binding::Invocation {
-                    children, inputs, ..
-                } => {
-                    children.map_or(0, |index| {
-                        count_children(&components[index].bindings, components)
-                    }) + inputs
-                        .iter()
-                        .map(|input| match input.value {
-                            InputValue::Content { component, .. } => {
-                                count_children(&components[component].bindings, components)
-                            }
-                            _ => 0,
-                        })
-                        .sum::<usize>()
-                }
+                Binding::Invocation { .. } => binding.components().into_iter().map(count).sum(),
                 _ => 0,
             })
             .sum()

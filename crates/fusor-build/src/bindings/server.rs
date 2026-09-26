@@ -7,25 +7,6 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use sha2::{Digest, Sha256};
 
-// Passed immediately to the escaped writer, so borrowed formatting arguments
-// do not escape their source expression's statement.
-fn string(value: &InterpolatedString) -> TokenStream {
-    let mut format = String::new();
-    let mut expressions = Vec::new();
-    for part in &value.0 {
-        match part {
-            StringPart::Literal(text) => {
-                format.push_str(&text.replace('{', "{{").replace('}', "}}"));
-            }
-            StringPart::Expression(expression) => {
-                format.push_str("{}");
-                expressions.push(expression);
-            }
-        }
-    }
-    quote! { ::std::format_args!(#format #(, (#expressions))*) }
-}
-
 pub(super) fn hash(component: &Component, components: &[Component]) -> String {
     let mut hash = Sha256::new();
     hash.update(component.html.as_bytes());
@@ -33,61 +14,21 @@ pub(super) fn hash(component: &Component, components: &[Component]) -> String {
         hash.update(fragment.tokens.to_string());
         hash.update([0]);
     }
-    fn descendants(bindings: &[Binding], components: &[Component], digest: &mut Sha256) {
-        for binding in bindings {
-            match binding {
-                Binding::Invocation {
-                    children: Some(index),
-                    ..
-                } => digest.update(self::hash(&components[*index], components)),
-                Binding::Router { routes, .. } => {
-                    for route in routes {
-                        digest.update(route.path.as_deref().unwrap_or("<fallback>").as_bytes());
-                        digest.update([0]);
-                        if let Some(alias) = &route.params {
-                            digest.update(alias.tokens.to_string());
-                        }
-                        digest.update(self::hash(&components[route.body], components));
-                    }
+    for binding in Binding::walk(&component.bindings) {
+        if let Binding::Router { routes, .. } = binding {
+            for route in routes {
+                hash.update(route.path.as_deref().unwrap_or("<fallback>").as_bytes());
+                hash.update([0]);
+                if let Some(alias) = &route.params {
+                    hash.update(alias.tokens.to_string());
                 }
-                Binding::Branch { cases, .. } => {
-                    for case in cases {
-                        digest.update(self::hash(&components[case.body], components));
-                    }
-                }
-                Binding::ForEach { body, .. } => {
-                    digest.update(self::hash(&components[*body], components))
-                }
-                Binding::Region { bindings, .. } => descendants(bindings, components, digest),
-                _ => {}
             }
         }
+        for child in binding.components() {
+            hash.update(self::hash(&components[child], components));
+        }
     }
-    descendants(&component.bindings, components, &mut hash);
     format!("{:x}", hash.finalize())
-}
-
-fn node(binding: &Binding) -> Option<ElementId> {
-    match binding {
-        Binding::Text { .. }
-        | Binding::Invocation { .. }
-        | Binding::Children { .. }
-        | Binding::Router { .. }
-        | Binding::Branch { .. } => None,
-        Binding::ForEach { node, .. }
-        | Binding::Island { node, .. }
-        | Binding::Region { node, .. }
-        | Binding::Attribute { node, .. }
-        | Binding::Property { node, .. }
-        | Binding::Boolean { node, .. }
-        | Binding::Value { node, .. }
-        | Binding::Checked { node, .. }
-        | Binding::Class { node, .. }
-        | Binding::Event { node, .. }
-        | Binding::Input { node, .. }
-        | Binding::Field { node, .. }
-        | Binding::Slot { node, .. } => Some(*node),
-    }
 }
 
 fn construct_child(
@@ -97,14 +38,7 @@ fn construct_child(
     components: &[Component],
     into: bool,
 ) -> TokenStream {
-    let fields = inputs.iter().map(|input| {
-        let name = &input.name;
-        let value = input
-            .value
-            .value()
-            .expect("server projected content rejected by parser");
-        quote_spanned! {name.span()=> #name: { #value } }
-    });
+    let fields = super::emit::fields(inputs, super::emit::braced);
     let body = children
         .filter(|index| !components[*index].empty)
         .map(|index| component_body(&components[index], components, false));
@@ -265,7 +199,7 @@ impl ServerRender<'_> {
         let bindings: Vec<&Binding> = component
             .bindings
             .iter()
-            .filter(|binding| id.is_some() && node(binding) == id)
+            .filter(|binding| id.is_some_and(|id| binding.anchor() == Anchor::Element(id)))
             .collect();
         let island = bindings
             .iter()
@@ -364,7 +298,7 @@ impl ServerRender<'_> {
         let span = binding.span();
         match binding {
             Binding::Attribute { name, value, .. } if !island || name != "id" => {
-                let value = string(value);
+                let value = super::emit::format_args(value);
                 quote_spanned! {span=> __fusor_writer.attr(#name, #value); }
             }
             Binding::Boolean { name, value, .. } => {
@@ -374,7 +308,7 @@ impl ServerRender<'_> {
                 quote_spanned! {span=> __fusor_writer.boolean("checked", { #value }); }
             }
             Binding::Value { value, .. } if !sensitive => {
-                let value = string(value);
+                let value = super::emit::format_args(value);
                 quote_spanned! {span=> __fusor_writer.attr("value", #value); }
             }
             Binding::Input {
@@ -568,13 +502,13 @@ fn island_prelude(tag: &StartTag<usize>, bindings: &[&Binding], island: &Binding
         unreachable!("island_prelude receives an island binding")
     };
     let span = descriptor.span();
-    let activation = syn::Ident::new(activation.variant(), span);
-    let prefetch = syn::Ident::new(prefetch.variant(), span);
+    let activation = super::emit::variant(span, activation);
+    let prefetch = super::emit::variant(span, prefetch);
     let id = if let Some(Binding::Attribute { value, .. }) = bindings
         .iter()
         .find(|binding| matches!(binding, Binding::Attribute { name, .. } if name == "id"))
     {
-        let value = super::codegen::string(value);
+        let value = super::emit::string(value);
         quote! { ::std::option::Option::Some(#value) }
     } else if let Some(value) = tag.attributes.get(b"id".as_slice()) {
         let value = String::from_utf8_lossy(value).into_owned();
@@ -591,17 +525,12 @@ fn island_prelude(tag: &StartTag<usize>, bindings: &[&Binding], island: &Binding
 
 /// The island's serialized props, built from the component tag's inputs.
 fn island_props(descriptor: &Rust, inputs: &[Input]) -> TokenStream {
-    let fields = inputs.iter().map(|input| {
-        let name = &input.name;
-        let value = input.value.value().expect("hydrated inputs are values");
+    let fields = super::emit::fields(inputs, |value| match value {
         // String literals own their value across the serialized boundary.
-        let literal = matches!(input.value, InputValue::Literal(_))
-            || syn::parse2::<syn::LitStr>(value.tokens.clone()).is_ok();
-        if literal {
-            quote_spanned! {value.span()=> #name: ::core::convert::Into::into(#value) }
-        } else {
-            quote_spanned! {value.span()=> #name: { #value } }
+        InputValue::Literal(value) => {
+            quote_spanned! {value.span()=> ::core::convert::Into::into(#value) }
         }
+        value => super::emit::braced(value),
     });
     quote_spanned! {descriptor.span()=> {
         type __FusorIslandProps = <#descriptor as ::fusor_islands::Island>::Props;

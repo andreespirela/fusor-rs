@@ -1,11 +1,11 @@
-use super::{Ctx, Nodes, captures, scoped};
+use super::{Bundle, Ctx, captures, scoped};
 use crate::bindings::{
     emit::{self, element, point, text},
-    ir::{Binding, Component},
+    ir::{Anchor, Binding, Component},
     tokens::Rust,
 };
-use fusor::template::{self, ChildPolicy, MountId, RootKind};
-use proc_macro2::TokenStream;
+use fusor::template::{self, ChildPolicy, MountId};
+use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
 
 pub(super) struct TemplateCode {
@@ -17,19 +17,13 @@ pub(super) struct TemplateCode {
 pub(super) fn lower(component: &Component, ctx: Ctx) -> TemplateCode {
     let id = component.id.index();
     let version = template::VERSION;
-    let kind = match component.kind() {
-        RootKind::Existing => quote! { ::fusor::template::RootKind::Existing },
-        RootKind::Template => quote! { ::fusor::template::RootKind::Template },
-    };
+    let kind = emit::variant(Span::call_site(), component.kind());
     let elements = component.elements.iter().map(|node| {
         let id = node.id.index();
         let tag = &node.tag;
-        let children = match node.children {
-            ChildPolicy::Static => quote! { ::fusor::template::ChildPolicy::Static },
-            ChildPolicy::Managed => quote! { ::fusor::template::ChildPolicy::Managed },
-        };
+        let children = emit::variant(Span::call_site(), node.children);
         quote! { ::fusor::template::ElementDescriptor {
-            id: ::fusor::template::ElementId::new(#id), tag: #tag, children: #children,
+            id: ::fusor::template::ElementId::new(#id), tag: #tag, children: ::fusor::template::ChildPolicy::#children,
         }}
     });
     let texts = component.texts.iter().map(|id| {
@@ -65,20 +59,13 @@ pub(super) fn lower(component: &Component, ctx: Ctx) -> TemplateCode {
             let id = id.index();
             quote! { let #name = __fusor_nodes.take_text(::fusor::template::TextId::new(#id))?; }
         });
-    fn mount_points(bindings: &[Binding], mounts: &mut Vec<MountId>) {
-        for binding in bindings {
-            match binding {
-                Binding::Invocation { point, .. }
-                | Binding::Children { point, .. }
-                | Binding::Router { point, .. }
-                | Binding::Branch { point, .. } => mounts.push(*point),
-                Binding::Region { bindings, .. } => mount_points(bindings, mounts),
-                _ => {}
-            }
-        }
-    }
-    let mut mounts = Vec::new();
-    mount_points(&component.bindings, &mut mounts);
+    let mounts: Vec<MountId> = Binding::walk(&component.bindings)
+        .into_iter()
+        .filter_map(|binding| match binding.anchor() {
+            Anchor::Mount(point) => Some(point),
+            _ => None,
+        })
+        .collect();
     let mount_ids = mounts.iter().map(|id| {
         let id = id.index();
         quote! { ::fusor::template::MountId::new(#id) }
@@ -93,7 +80,7 @@ pub(super) fn lower(component: &Component, ctx: Ctx) -> TemplateCode {
             const __FUSOR_TEMPLATE: ::fusor::template::TemplateDescriptor = ::fusor::template::TemplateDescriptor {
                 version: #version,
                 component: ::fusor::template::ComponentId::new(#id),
-                kind: #kind,
+                kind: ::fusor::template::RootKind::#kind,
                 elements: &[#(#elements),*],
                 texts: &[#(#texts),*],
                 text_elements: &[#(#text_elements),*],
@@ -141,7 +128,7 @@ fn binding_bundle(component: &Component, ctx: Ctx, locals: &[Rust]) -> Option<Ve
             )
         })
         .collect();
-    let nodes = Nodes::Bundle {
+    let bundle = Bundle {
         elements: &elements,
         texts: &texts,
     };
@@ -149,7 +136,7 @@ fn binding_bundle(component: &Component, ctx: Ctx, locals: &[Rust]) -> Option<Ve
         .bindings
         .iter()
         .map(|binding| {
-            let operation = scoped(binding, &nodes)?;
+            let operation = scoped(binding, Some(&bundle))?;
             let captures = captures(binding.span(), ctx, locals);
             Some(quote_spanned! {binding.span()=> {
                 #captures

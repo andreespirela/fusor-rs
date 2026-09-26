@@ -110,19 +110,14 @@ pub(super) fn inputs(input: &TagInput) -> Result<(Rust, Rust, Rust, Rust), Extra
 // This proof intentionally covers only the existing direct component-forwarding
 // row lowering. Descendant content and nested lexical rows retain the full Row.
 pub(super) fn mark_item_only_rows(components: &mut [Component]) {
-    fn bodies(bindings: &[Binding], rows: &mut Vec<usize>) {
-        for binding in bindings {
-            match binding {
-                Binding::ForEach { body, .. } => rows.push(*body),
-                Binding::Region { bindings, .. } => bodies(bindings, rows),
-                _ => {}
-            }
-        }
-    }
-    let mut rows = Vec::new();
-    for component in components.iter() {
-        bodies(&component.bindings, &mut rows);
-    }
+    let rows: Vec<usize> = components
+        .iter()
+        .flat_map(|component| Binding::walk(&component.bindings))
+        .filter_map(|binding| match binding {
+            Binding::ForEach { body, .. } => Some(*body),
+            _ => None,
+        })
+        .collect();
     for row in rows {
         let item_only = forwards_item_only(&components[row], components);
         components[row].item_only_row = item_only;
@@ -132,7 +127,7 @@ pub(super) fn mark_item_only_rows(components: &mut [Component]) {
 fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
     if !component.inline()
         || component.capture().is_some()
-        || component.locals.len() != 1
+        || component.row_locals.len() != 1
         || !component.async_locals.is_empty()
         || !component.route_locals.is_empty()
         || !component.elements.is_empty()
@@ -167,7 +162,7 @@ fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
     {
         return false;
     }
-    let index = component.locals[0].1.tokens.to_string();
+    let index = component.row_locals[0].1.tokens.to_string();
     let index = index.strip_prefix("r#").unwrap_or(&index);
     fn independent(tokens: proc_macro2::TokenStream, index: &str) -> bool {
         tokens.into_iter().all(|token| match token {

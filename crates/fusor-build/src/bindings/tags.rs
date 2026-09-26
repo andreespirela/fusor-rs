@@ -20,55 +20,40 @@ pub(super) fn name(source: &str, offset: usize) -> &str {
         .unwrap_or("")
 }
 
-/// A tag the compiler implements itself. HTML folds tag names to lowercase, so a
-/// built-in is recognized by that name and must be written with its spelling.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum BuiltIn {
-    App,
-    If,
-    Else,
-    Match,
-    Case,
-    ForEach,
-    Async,
-    Await,
-    Children,
-    Router,
-    Route,
+/// Declare the built-in tags once; each variant's name is its exact spelling.
+macro_rules! built_ins {
+    ($($tag:ident),* $(,)?) => {
+        /// A tag the compiler implements itself. HTML folds tag names to lowercase, so
+        /// a built-in is recognized by that name and must be written with its spelling.
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        pub(super) enum BuiltIn {
+            $($tag),*
+        }
+
+        impl BuiltIn {
+            const SPELLINGS: &[(Self, &'static str)] = &[$((Self::$tag, stringify!($tag))),*];
+        }
+    };
 }
+
+built_ins!(
+    App, If, Else, Match, Case, ForEach, Async, Await, Children, Router, Route
+);
 
 impl BuiltIn {
     pub fn classify(name: &str) -> Option<Self> {
-        Some(match name {
-            "app" => Self::App,
-            "if" => Self::If,
-            "else" => Self::Else,
-            "match" => Self::Match,
-            "case" => Self::Case,
-            "foreach" => Self::ForEach,
-            "async" => Self::Async,
-            "await" => Self::Await,
-            "children" => Self::Children,
-            "router" => Self::Router,
-            "route" => Self::Route,
-            _ => return None,
-        })
+        Self::SPELLINGS
+            .iter()
+            .find(|(_, spelling)| spelling.eq_ignore_ascii_case(name))
+            .map(|&(builtin, _)| builtin)
     }
 
     pub fn spelling(self) -> &'static str {
-        match self {
-            Self::App => "App",
-            Self::If => "If",
-            Self::Else => "Else",
-            Self::Match => "Match",
-            Self::Case => "Case",
-            Self::ForEach => "ForEach",
-            Self::Async => "Async",
-            Self::Await => "Await",
-            Self::Children => "Children",
-            Self::Router => "Router",
-            Self::Route => "Route",
-        }
+        Self::SPELLINGS
+            .iter()
+            .find(|(builtin, _)| *builtin == self)
+            .map(|&(_, spelling)| spelling)
+            .expect("every built-in has a spelling")
     }
 }
 
@@ -245,6 +230,7 @@ pub(super) fn invocation(
     source: &str,
     tag: &StartTag<usize>,
     point: MountId,
+    hydrated: bool,
 ) -> Result<Binding, ExtractError> {
     let name = name(source, tag.span.start);
     let path = syn::parse_str::<syn::Path>(name).map_err(|_| {
@@ -285,8 +271,11 @@ pub(super) fn invocation(
             ));
         }
         let value_offset = crate::html::value_start(source, offset);
-        if let Some(option) = name.strip_prefix("hydrate:") {
-            return Err(error(source, offset, hydrate_option(option)));
+        if name == "hydrate" || name.starts_with("hydrate:") {
+            if hydrated && super::hydration::ATTRIBUTES.contains(&name.as_ref()) {
+                continue;
+            }
+            return Err(error(source, offset, super::hydration::misplaced(&name)));
         }
         match name.as_ref() {
             "rust:if" => condition = Some(Rust::parse(source, &value_text, value_offset)?),
@@ -298,7 +287,7 @@ pub(super) fn invocation(
                     let text = value_text.as_ref();
                     InputValue::Literal(Rust::synthetic(quote! { #text }, value_offset))
                 } else {
-                    InputValue::Expression(exact_expression(
+                    literal_or_expression(exact_expression(
                         source,
                         &value_text,
                         parts,
@@ -320,14 +309,12 @@ pub(super) fn invocation(
     })
 }
 
-/// `hydrate` and its known options are removed before a hydrated tag gets here.
-fn hydrate_option(option: &str) -> String {
-    match option {
-        "id" | "prefetch" => format!("hydrate:{option} requires hydrate on the same component tag"),
-        "target" => "hydrate:target belongs on the native button that activates an island".into(),
-        _ => format!(
-            "unknown attribute hydrate:{option}; component tags accept hydrate, hydrate:id and hydrate:prefetch"
-        ),
+/// `{{ "text" }}` is written like an expression but is a string literal input.
+fn literal_or_expression(value: Rust) -> InputValue {
+    if syn::parse2::<syn::LitStr>(value.tokens.clone()).is_ok() {
+        InputValue::Literal(value)
+    } else {
+        InputValue::Expression(value)
     }
 }
 

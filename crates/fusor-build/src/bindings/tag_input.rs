@@ -1,31 +1,20 @@
 //! Attributes of the built-in tags: which ones a tag accepts, `{{ expression }}`
 //! values and the names a tag binds. Errors name the tag and point at the value
 //! when there is one, at the tag otherwise.
-use super::{interpolation, tags::BuiltIn, tokens::Rust};
+use super::{interpolation, tokens::Rust};
 use crate::{ExtractError, error};
 use html5gum::{HtmlString, Spanned, StartTag};
 
 pub(super) struct TagInput<'a> {
-    source: &'a str,
-    tag: &'a StartTag<usize>,
-    builtin: BuiltIn,
+    pub source: &'a str,
+    pub tag: &'a StartTag<usize>,
+    /// The tag as errors name it, such as `ForEach`.
+    label: &'a str,
 }
 
 impl<'a> TagInput<'a> {
-    pub fn new(source: &'a str, tag: &'a StartTag<usize>, builtin: BuiltIn) -> Self {
-        Self {
-            source,
-            tag,
-            builtin,
-        }
-    }
-
-    pub fn source(&self) -> &'a str {
-        self.source
-    }
-
-    pub fn offset(&self) -> usize {
-        self.tag.span.start
+    pub fn new(source: &'a str, tag: &'a StartTag<usize>, label: &'a str) -> Self {
+        Self { source, tag, label }
     }
 
     pub fn error(&self, message: impl Into<String>) -> ExtractError {
@@ -39,10 +28,7 @@ impl<'a> TagInput<'a> {
     /// Built-ins that own content need an explicit closing tag.
     pub fn closed(&self) -> Result<(), ExtractError> {
         if self.tag.self_closing {
-            return Err(self.error(format!(
-                "{} requires an explicit closing tag",
-                self.builtin.spelling()
-            )));
+            return Err(self.error(format!("{} requires an explicit closing tag", self.label)));
         }
         Ok(())
     }
@@ -53,7 +39,7 @@ impl<'a> TagInput<'a> {
         if self.tag.attributes.keys().all(known) {
             return Ok(());
         }
-        Err(self.error(format!("{} accepts {usage}", self.builtin.spelling())))
+        Err(self.error(format!("{} accepts {usage}", self.label)))
     }
 
     pub fn has(&self, name: &str) -> bool {
@@ -79,7 +65,7 @@ impl<'a> TagInput<'a> {
         self.optional_expression(name)?.ok_or_else(|| {
             self.error(format!(
                 "{} requires {name}=\"{{{{ Rust expression }}}}\"",
-                self.builtin.spelling()
+                self.label
             ))
         })
     }
@@ -96,7 +82,7 @@ impl<'a> TagInput<'a> {
             offset,
             &format!(
                 "{} {name} requires exactly one {{{{ Rust expression }}}}",
-                self.builtin.spelling()
+                self.label
             ),
         )
         .map(Some)
@@ -122,10 +108,7 @@ impl<'a> TagInput<'a> {
         if super::tags::reserved_scope_name(name) {
             return Err(self.error_at(
                 offset,
-                format!(
-                    "{} {role} cannot shadow framework scope names",
-                    self.builtin.spelling()
-                ),
+                format!("{} {role} cannot shadow framework scope names", self.label),
             ));
         }
         self.field(role, name, offset)
@@ -136,10 +119,7 @@ impl<'a> TagInput<'a> {
         if !super::tags::snake_case_ident(name) {
             return Err(self.error_at(
                 offset,
-                format!(
-                    "{} {role} must be a snake_case Rust identifier",
-                    self.builtin.spelling()
-                ),
+                format!("{} {role} must be a snake_case Rust identifier", self.label),
             ));
         }
         Rust::parse(self.source, name, offset)

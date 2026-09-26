@@ -6,7 +6,7 @@ use quote::{ToTokens, quote};
 use syn::parse::Parser;
 
 pub(super) fn pattern(input: &TagInput) -> Result<(Rust, Vec<Rust>), ExtractError> {
-    let source = input.source();
+    let source = input.source;
     input.accepts(&["pattern"], "only pattern=\"Rust pattern\"")?;
     let (value, offset) = input
         .text("pattern")
@@ -90,32 +90,6 @@ pub(super) fn pattern(input: &TagInput) -> Result<(Rust, Vec<Rust>), ExtractErro
         Rust::new(source, pattern.into_token_stream(), offset)?,
         bindings,
     ))
-}
-
-pub(super) fn body(
-    components: &mut Vec<Component>,
-    owner: usize,
-    first: usize,
-    offset: usize,
-    locals: Vec<Rust>,
-    aliases: Vec<Rust>,
-) -> usize {
-    let index = components.len();
-    let id = fusor::template::ComponentId::new(first + index);
-    components.push(Component {
-        locals: components[owner].locals.clone(),
-        async_locals: locals,
-        route_locals: aliases,
-        snapshot_locals: components[owner].snapshot_locals.clone(),
-        ..Component::new(
-            id,
-            Rust::ident(&format!("__FusorBranch{}", id.index()), offset),
-            ComponentShape::Fragment(components[owner].ty.clone()),
-            components[owner].render,
-            offset..offset,
-        )
-    });
-    index
 }
 
 // Nested pairs have no tuple-arity trait limit. Only the selected case owns data.

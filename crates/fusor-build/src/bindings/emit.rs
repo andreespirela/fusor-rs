@@ -1,6 +1,9 @@
 //! Token helpers shared by the browser and server lowerings: generated names,
 //! lint allowances and the statements both targets write the same way.
-use super::tokens::Rust;
+use super::{
+    ir::{Anchor, Input, InputValue, InterpolatedString, StringPart},
+    tokens::Rust,
+};
 use fusor::template::{ElementId, MountId, TextId};
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
@@ -25,6 +28,21 @@ pub(super) fn point(id: MountId) -> Ident {
 
 pub(super) fn text(id: TextId) -> Ident {
     indexed("text", id.index())
+}
+
+/// The name of an enum variant shared with a runtime crate, to write after its
+/// path: `::fusor_islands::Activation::#variant`.
+pub(super) fn variant(span: Span, value: impl std::fmt::Debug) -> Ident {
+    Ident::new(&format!("{value:?}"), span)
+}
+
+/// The typed handle the template hands out for a binding's anchor.
+pub(super) fn handle(anchor: Anchor) -> Ident {
+    match anchor {
+        Anchor::Element(id) => element(id),
+        Anchor::Mount(id) => point(id),
+        Anchor::Text(id) => text(id),
+    }
 }
 
 /// Give a closure its own copy of each lexical local it reads.
@@ -55,6 +73,63 @@ pub(super) fn from_inputs(
         type __FusorInputs = <#ty as ::fusor::dom::FromInputs>::Inputs;
         <#ty as ::fusor::dom::FromInputs>::from_inputs(__FusorInputs { #(#fields),* }, owner)
     }
+}
+
+/// The `name: value` fields of a component's inputs struct; `value` lowers each input.
+pub(super) fn fields(
+    inputs: &[Input],
+    value: impl Fn(&InputValue) -> TokenStream,
+) -> Vec<TokenStream> {
+    inputs
+        .iter()
+        .map(|input| {
+            let name = &input.name;
+            let value = value(&input.value);
+            quote_spanned! {name.span()=> #name: #value }
+        })
+        .collect()
+}
+
+/// An expression or literal input as its own block.
+pub(super) fn braced(value: &InputValue) -> TokenStream {
+    let value = value
+        .value()
+        .expect("projected content is lowered by its caller");
+    quote_spanned! {value.span()=> { #value } }
+}
+
+/// An interpolated attribute value as an owned `String`.
+pub(super) fn string(value: &InterpolatedString) -> TokenStream {
+    let (format, expressions) = format_parts(value);
+    if let ("{}", [expression]) = (format.as_str(), expressions.as_slice()) {
+        quote! { ::std::string::ToString::to_string(&(#expression)) }
+    } else {
+        quote! { ::std::format!(#format #(, (#expressions))*) }
+    }
+}
+
+/// An interpolated attribute value as `format_args!`, for a writer that escapes
+/// it at once, so borrowed arguments never outlive their statement.
+pub(super) fn format_args(value: &InterpolatedString) -> TokenStream {
+    let (format, expressions) = format_parts(value);
+    quote! { ::std::format_args!(#format #(, (#expressions))*) }
+}
+
+fn format_parts(value: &InterpolatedString) -> (String, Vec<&Rust>) {
+    let mut format = String::new();
+    let mut expressions = Vec::new();
+    for part in &value.0 {
+        match part {
+            StringPart::Literal(text) => {
+                format.push_str(&text.replace('{', "{{").replace('}', "}}"));
+            }
+            StringPart::Expression(expression) => {
+                format.push_str("{}");
+                expressions.push(expression);
+            }
+        }
+    }
+    (format, expressions)
 }
 
 /// An authored optional expression, or the value used when it is absent.
