@@ -1,5 +1,5 @@
 //! Lazy, typed HTML content. Factories are reusable; mounted scopes are unique.
-use super::{ElementTarget, JsValue, Scope, TemplateComponent};
+use super::{ElementTarget, JsValue, Scope, TemplateComponent, component::Retained};
 use crate::{OwnerHandle, untrack};
 use std::rc::Rc;
 
@@ -81,25 +81,19 @@ impl Scope {
     ) -> Result<(), JsValue> {
         let container = target.resolve(self)?;
         let parent = self.owner();
-        let mut current: Option<(K, Content, Scope)> = None;
+        let mut current: Retained<(K, Content)> = Retained::default();
         self.bind(move || {
             let next = read();
             untrack(|| {
-                let Some((key, content)) = next else {
-                    current.take();
+                let Some(identity) = next else {
+                    current.clear();
                     return Ok(());
                 };
-                if current.as_ref().is_some_and(|(old_key, old_content, _)| {
-                    old_key == &key && old_content == &content
-                }) {
+                if current.key() == Some(&identity) {
                     return Ok(());
                 }
-                let mut child = content.prepare(&parent)?;
-                child.attach(&container)?;
-                child.finish_prepare()?;
-                current = Some((key, content, child));
-                current.as_ref().expect("just inserted").2.commit();
-                Ok(())
+                let child = identity.1.prepare(&parent)?;
+                current.replace(identity, child, |child| child.attach(&container))
             })
         })
     }

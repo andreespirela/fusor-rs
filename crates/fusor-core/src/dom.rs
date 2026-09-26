@@ -13,24 +13,31 @@ mod content;
 pub use children::Children;
 #[cfg(feature = "islands")]
 pub mod delivery;
+mod hydration;
 mod keyed;
 mod mount;
 mod property;
+mod range;
 mod reconcile;
 mod strings;
 mod target;
 #[doc(hidden)]
 pub mod text_value;
 
-#[doc(hidden)]
-pub use component::{MountGuard, MountPoint};
 pub use content::Content;
 #[doc(hidden)]
-pub use mount::TemplateNodes;
+pub use mount::{NestingGuard, TemplateNodes};
+#[doc(hidden)]
+pub use range::MountPoint;
 pub use target::{ElementTarget, InputTarget};
 
-use crate::{Effect, Owner, OwnerHandle};
-use std::{cell::Cell, rc::Rc};
+use crate::{Effect, Owner, OwnerHandle, batch};
+use std::{
+    cell::{Cell, RefCell},
+    collections::VecDeque,
+    rc::Rc,
+    thread::LocalKey,
+};
 pub use wasm_bindgen::JsValue;
 use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{Document, Element, Event, EventTarget, HtmlTemplateElement};
@@ -138,10 +145,100 @@ fn missing(selector: &str) -> JsValue {
     JsValue::from_str(&format!("fusor: no element matches {selector:?}"))
 }
 
+const HTML_NAMESPACE: &str = "http://www.w3.org/1999/xhtml";
+
+fn is_html(element: &Element) -> bool {
+    element.namespace_uri().as_deref() == Some(HTML_NAMESPACE)
+}
+
+/// Replace a thread-local for the duration of `run`, restoring it on unwind.
+fn scoped<T: 'static, R>(
+    key: &'static LocalKey<RefCell<T>>,
+    value: T,
+    run: impl FnOnce() -> R,
+) -> R {
+    struct Restore<T: 'static>(&'static LocalKey<RefCell<T>>, Option<T>);
+    impl<T: 'static> Drop for Restore<T> {
+        fn drop(&mut self) {
+            if let Some(previous) = self.1.take() {
+                self.0.set(previous);
+            }
+        }
+    }
+    let _restore = Restore(key, Some(key.replace(value)));
+    run()
+}
+
+/// Find or insert an entry in a small FIFO-bounded registry of static metadata.
+/// No registry borrow crosses `make`, which may reenter through JavaScript.
+fn cached<T: Clone + 'static>(
+    registry: &'static LocalKey<RefCell<VecDeque<T>>>,
+    limit: usize,
+    matches: impl Fn(&T) -> bool,
+    make: impl FnOnce() -> T,
+) -> T {
+    if let Some(found) =
+        registry.with_borrow(|entries| entries.iter().rev().find(|entry| matches(entry)).cloned())
+    {
+        return found;
+    }
+    let entry = make();
+    registry.with_borrow_mut(|entries| {
+        if entries.len() >= limit {
+            entries.pop_front();
+        }
+        entries.push_back(entry.clone());
+    });
+    entry
+}
+
+/// Prepare a component on its server-rendered root, when there is one.
+fn with_native_root<R>(
+    root: Option<&Element>,
+    make: impl FnOnce() -> Result<R, JsValue>,
+) -> Result<R, JsValue> {
+    match root {
+        #[cfg(feature = "islands")]
+        Some(root) => hydration::with_root(root, make),
+        _ => make(),
+    }
+}
+
+/// Remove an owned root, first disposing islands activated inside it.
+fn remove_tree(root: &Element) {
+    #[cfg(feature = "islands")]
+    delivery::dispose_tree(root);
+    root.remove();
+}
+
 struct Listener {
     target: EventTarget,
     event: strings::EventName,
     callback: Closure<dyn Fn(Event)>,
+}
+
+impl Listener {
+    /// Batch the handler's signal writes; skip events while `active` is false.
+    fn new(
+        target: EventTarget,
+        event: &str,
+        active: impl Fn() -> bool + 'static,
+        handler: impl FnMut(Event) + 'static,
+    ) -> Result<Self, JsValue> {
+        let handler = RefCell::new(handler);
+        let callback = Closure::wrap(Box::new(move |event| {
+            if active() {
+                batch(|| (handler.borrow_mut())(event));
+            }
+        }) as Box<dyn Fn(Event)>);
+        let event = strings::EventName::from(event);
+        strings::add(&target, &event, callback.as_ref())?;
+        Ok(Self {
+            target,
+            event,
+            callback,
+        })
+    }
 }
 
 impl Drop for Listener {
@@ -205,9 +302,7 @@ impl Drop for Scope {
             }
         }
         if self.remove_on_drop && hydrated_owned.unwrap_or(true) {
-            #[cfg(feature = "islands")]
-            delivery::dispose_tree(&self.root);
-            self.root.remove();
+            remove_tree(&self.root);
         }
     }
 }

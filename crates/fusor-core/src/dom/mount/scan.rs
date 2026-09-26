@@ -2,11 +2,11 @@ use super::{
     ElementHandle, Handles, Mounts, Resolution, Slot, TextPosition, element_text, invalid,
     text_slot,
 };
-use crate::dom::{MountPoint, document, strings};
+use crate::dom::{MountPoint, document, is_html, strings};
 use crate::template::{
     self, ChildPolicy, ElementId, MountId, MountMarker, TemplateDescriptor, TextId, TextMarker,
 };
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Display};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, Node};
 
@@ -67,16 +67,12 @@ pub(super) fn resolve(
                 let element: Element = node.unchecked_into();
                 if let Some(value) = element.get_attribute(template::TEXT_ELEMENT_ATTRIBUTE) {
                     let id: TextId = value.parse().map_err(invalid)?;
-                    if text_elements.insert(id, element.clone()).is_some() {
-                        return Err(invalid(format_args!("duplicate text element {id}")));
-                    }
+                    insert(&mut text_elements, id, element.clone(), "text element")?;
                 }
-                if let Some(value) = strings::attribute(&element, strings::Attribute::Element) {
+                if let Some(value) = strings::attribute(&element, strings::Name::Element) {
                     let id: ElementId = value.parse().map_err(invalid)?;
                     skip_children = managed.contains(&id);
-                    if elements.insert(id, element).is_some() {
-                        return Err(invalid(format_args!("duplicate element {id}")));
-                    }
+                    insert(&mut elements, id, element, "element")?;
                 }
             }
             Node::COMMENT_NODE => {
@@ -91,17 +87,13 @@ pub(super) fn resolve(
                         }
                         MountMarker::End(id) => (id, &mut mount_ends),
                     };
-                    if anchors.insert(id, node).is_some() {
-                        return Err(invalid(format_args!("duplicate component anchor {id}")));
-                    }
+                    insert(anchors, id, node, "component anchor")?;
                 } else if let Some(marker) = TextMarker::parse(&value).map_err(invalid)? {
                     let (id, anchors, kind) = match marker {
-                        TextMarker::Start(id) => (id, &mut starts, "start"),
-                        TextMarker::End(id) => (id, &mut ends, "end"),
+                        TextMarker::Start(id) => (id, &mut starts, "text start"),
+                        TextMarker::End(id) => (id, &mut ends, "text end"),
                     };
-                    if anchors.insert(id, node).is_some() {
-                        return Err(invalid(format_args!("duplicate text {kind} {id}")));
-                    }
+                    insert(anchors, id, node, kind)?;
                 }
             }
             _ => {}
@@ -122,12 +114,8 @@ pub(super) fn resolve(
 
     let mut handles = Handles::new();
     for expected in descriptor.elements {
-        let element = elements
-            .remove(&expected.id)
-            .ok_or_else(|| invalid(format_args!("missing element {}", expected.id)))?;
-        if element.local_name() != expected.tag
-            || element.namespace_uri().as_deref() != Some("http://www.w3.org/1999/xhtml")
-        {
+        let element = take(&mut elements, expected.id, "element")?;
+        if element.local_name() != expected.tag || !is_html(&element) {
             return Err(invalid(format_args!(
                 "element {} must be <{}>, found <{}>",
                 expected.id,
@@ -154,12 +142,8 @@ pub(super) fn resolve(
     // Validate every pair before adding text nodes or subscribing effects.
     let mut slots = Vec::new();
     for id in descriptor.texts {
-        let start = starts
-            .remove(id)
-            .ok_or_else(|| invalid(format_args!("missing text start {id}")))?;
-        let end = ends
-            .remove(id)
-            .ok_or_else(|| invalid(format_args!("missing text end {id}")))?;
+        let start = take(&mut starts, *id, "text start")?;
+        let end = take(&mut ends, *id, "text end")?;
         let text = text_slot(*id, &start, &end)?;
         slots.push(Slot {
             id: *id,
@@ -172,12 +156,8 @@ pub(super) fn resolve(
     }
     for expected in descriptor.text_elements {
         let id = expected.id;
-        let element = text_elements
-            .remove(&id)
-            .ok_or_else(|| invalid(format_args!("missing or mismatched text element {id}")))?;
-        if element.local_name() != expected.tag
-            || element.namespace_uri().as_deref() != Some("http://www.w3.org/1999/xhtml")
-        {
+        let element = take(&mut text_elements, id, "or mismatched text element")?;
+        if element.local_name() != expected.tag || !is_html(&element) {
             return Err(invalid(format_args!(
                 "text element {id} must be <{}>",
                 expected.tag
@@ -201,30 +181,43 @@ pub(super) fn resolve(
     }
     let mut mounts = Mounts::new();
     for id in expected_mounts {
-        let start = mount_starts
-            .remove(id)
-            .ok_or_else(|| invalid(format_args!("missing component start {id}")))?;
-        let end = mount_ends
-            .remove(id)
-            .ok_or_else(|| invalid(format_args!("missing component end {id}")))?;
         let point = MountPoint {
-            start: start.clone(),
-            end: end.clone(),
+            start: take(&mut mount_starts, *id, "component start")?,
+            end: take(&mut mount_ends, *id, "component end")?,
         };
         if hydrating {
             point.validate()?;
-        } else if !start
+        } else if !point
+            .start
             .next_sibling()
-            .is_some_and(|next| next.is_same_node(Some(&end)))
+            .is_some_and(|next| next.is_same_node(Some(&point.end)))
         {
             return Err(invalid(format_args!(
                 "component mount {id} must initially be empty and paired"
             )));
         }
-        mounts.insert(*id, MountPoint { start, end });
+        mounts.insert(*id, point);
     }
     if !mount_starts.is_empty() || !mount_ends.is_empty() {
         return Err(invalid("unexpected component anchors"));
     }
     Ok((handles, slots, mounts))
+}
+
+fn insert<K: Ord + Display + Copy, V>(
+    found: &mut BTreeMap<K, V>,
+    id: K,
+    value: V,
+    what: &str,
+) -> Result<(), JsValue> {
+    if found.insert(id, value).is_some() {
+        return Err(invalid(format_args!("duplicate {what} {id}")));
+    }
+    Ok(())
+}
+
+fn take<K: Ord + Display, V>(found: &mut BTreeMap<K, V>, id: K, what: &str) -> Result<V, JsValue> {
+    found
+        .remove(&id)
+        .ok_or_else(|| invalid(format_args!("missing {what} {id}")))
 }

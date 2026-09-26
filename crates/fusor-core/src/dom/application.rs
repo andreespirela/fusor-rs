@@ -23,9 +23,9 @@ struct Transition(bool);
 impl Drop for Transition {
     fn drop(&mut self) {
         if self.0 {
-            let scope = APP.with(|app| app.borrow_mut().scope.take());
-            drop(scope);
-            APP.with(|app| app.borrow_mut().phase = Phase::Idle);
+            // Drop the scope outside the borrow: its cleanup may reenter.
+            drop(APP.with_borrow_mut(|app| app.scope.take()));
+            APP.with_borrow_mut(|app| app.phase = Phase::Idle);
         }
     }
 }
@@ -42,8 +42,7 @@ pub fn mount<C: Component>(
 /// closure runs only after the single-root startup guard has been acquired.
 #[doc(hidden)]
 pub fn mount_scope(prepare: impl FnOnce() -> Result<Scope, JsValue>) -> Result<(), JsValue> {
-    APP.with(|app| {
-        let mut app = app.borrow_mut();
+    APP.with_borrow_mut(|app| {
         if app.phase != Phase::Idle {
             return Err(JsValue::from_str(
                 "fusor: application already mounted or changing lifecycle state",
@@ -54,31 +53,28 @@ pub fn mount_scope(prepare: impl FnOnce() -> Result<Scope, JsValue>) -> Result<(
     })?;
     let mut transition = Transition(true);
     let scope = Rc::new(prepare()?);
-    APP.with(|app| app.borrow_mut().scope = Some(scope.clone()));
+    APP.with_borrow_mut(|app| app.scope = Some(scope.clone()));
     scope.try_commit()?;
-    APP.with(|app| app.borrow_mut().phase = Phase::Running);
+    APP.with_borrow_mut(|app| app.phase = Phase::Running);
     transition.0 = false;
     Ok(())
 }
 
 /// Weak access to the retained root, useful to embedding and test adapters.
 pub fn owner() -> Option<OwnerHandle> {
-    APP.with(|app| app.borrow().scope.as_ref().map(|scope| scope.owner()))
+    APP.with_borrow(|app| app.scope.as_ref().map(|scope| scope.owner()))
 }
 
 /// Dispose the managed application. Idle teardown is a no-op; teardown during
 /// startup or cleanup is rejected. Callbacks run outside the application borrow.
 pub fn unmount() -> Result<(), JsValue> {
-    let scope = APP.with(|app| {
-        let mut app = app.borrow_mut();
-        match app.phase {
-            Phase::Idle => Ok(None),
-            Phase::Running => {
-                app.phase = Phase::Stopping;
-                Ok(app.scope.take())
-            }
-            _ => Err(JsValue::from_str("fusor: reentrant application teardown")),
+    let scope = APP.with_borrow_mut(|app| match app.phase {
+        Phase::Idle => Ok(None),
+        Phase::Running => {
+            app.phase = Phase::Stopping;
+            Ok(app.scope.take())
         }
+        _ => Err(JsValue::from_str("fusor: reentrant application teardown")),
     })?;
     let _transition = Transition(true);
     drop(scope);

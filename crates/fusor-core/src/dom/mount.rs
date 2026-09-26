@@ -5,7 +5,7 @@ use crate::OwnerHandle;
 use crate::template::{
     self, ChildPolicy, ElementId, MountId, RootKind, TemplateDescriptor, TextId,
 };
-use std::{collections::BTreeMap, rc::Rc};
+use std::{cell::Cell, collections::BTreeMap, rc::Rc};
 use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlInputElement, HtmlTemplateElement, Node, Text};
 
@@ -41,17 +41,14 @@ impl<K: Ord, V> Nodes<K, V> {
             }
         });
     }
+    fn index(&self, id: &K) -> Option<usize> {
+        self.0.binary_search_by(|(key, _)| key.cmp(id)).ok()
+    }
     fn get(&self, id: &K) -> Option<&V> {
-        self.0
-            .binary_search_by(|(key, _)| key.cmp(id))
-            .ok()
-            .and_then(|index| self.0[index].1.as_ref())
+        self.index(id).and_then(|index| self.0[index].1.as_ref())
     }
     fn take(&mut self, id: &K) -> Option<V> {
-        self.0
-            .binary_search_by(|(key, _)| key.cmp(id))
-            .ok()
-            .and_then(|index| self.0[index].1.take())
+        self.index(id).and_then(|index| self.0[index].1.take())
     }
     fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.0
@@ -71,6 +68,7 @@ enum TextPosition {
 }
 type Mounts = BTreeMap<MountId, MountPoint>;
 type Resolution = (Handles, Vec<Slot>, Mounts);
+type Mounted = (Scope, TemplateNodes);
 
 enum ElementHandle {
     Element(Element),
@@ -85,19 +83,50 @@ pub struct TemplateNodes {
     mounts: Mounts,
 }
 
+/// Deepest synchronous chain of generated component mounts.
+const MAX_NESTING: usize = 128;
+
+thread_local! {
+    static NESTING: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Held by a generated prepare while it mounts. Bounds recursive component
+/// tags, including cycles across HTML modules.
+#[doc(hidden)]
+pub struct NestingGuard;
+
+impl NestingGuard {
+    pub fn enter() -> Result<Self, JsValue> {
+        let depth = NESTING.get();
+        if depth >= MAX_NESTING {
+            return Err(JsValue::from_str(&format!(
+                "fusor: component nesting exceeds {MAX_NESTING}; check for recursive component tags"
+            )));
+        }
+        NESTING.set(depth + 1);
+        Ok(Self)
+    }
+}
+
+impl Drop for NestingGuard {
+    fn drop(&mut self) {
+        NESTING.set(NESTING.get() - 1);
+    }
+}
+
 fn invalid(message: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&format!("fusor: template mismatch: {message}"))
 }
 
+/// Generated code moves each validated handle out exactly once.
+#[doc(hidden)]
 impl TemplateNodes {
     /// A generated flat component can retain native targets without unpacking
-    /// every handle across the Wasm boundary. Typed consumers use the old path.
-    #[doc(hidden)]
+    /// every handle across the Wasm boundary.
     pub fn take_binding_bundle(&mut self) -> Option<Rc<JsValue>> {
         self.binding_bundle.take()
     }
 
-    #[doc(hidden)]
     pub fn take_element(&mut self, id: ElementId) -> Result<Element, JsValue> {
         match self.elements.take(&id) {
             Some(ElementHandle::Element(element)) => Ok(element),
@@ -106,7 +135,6 @@ impl TemplateNodes {
         }
     }
 
-    #[doc(hidden)]
     pub fn take_input(&mut self, id: ElementId) -> Result<HtmlInputElement, JsValue> {
         match self.elements.take(&id) {
             Some(ElementHandle::Input(input)) => Ok(input),
@@ -114,47 +142,16 @@ impl TemplateNodes {
         }
     }
 
-    #[doc(hidden)]
     pub fn take_text(&mut self, id: TextId) -> Result<Text, JsValue> {
         self.texts
             .take(&id)
             .ok_or_else(|| invalid(format_args!("missing text {id}")))
     }
 
-    #[doc(hidden)]
     pub fn take_mount_point(&mut self, id: MountId) -> Result<MountPoint, JsValue> {
         self.mounts
             .remove(&id)
             .ok_or_else(|| invalid(format_args!("missing component mount {id}")))
-    }
-
-    pub fn mount_point(&self, id: MountId) -> Result<MountPoint, JsValue> {
-        self.mounts
-            .get(&id)
-            .cloned()
-            .ok_or_else(|| invalid(format_args!("missing component mount {id}")))
-    }
-
-    pub fn element(&self, id: ElementId) -> Result<Element, JsValue> {
-        match self.elements.get(&id) {
-            Some(ElementHandle::Element(element)) => Ok(element.clone()),
-            Some(ElementHandle::Input(input)) => Ok(input.clone().into()),
-            None => Err(invalid(format_args!("missing element {id}"))),
-        }
-    }
-
-    pub fn input(&self, id: ElementId) -> Result<HtmlInputElement, JsValue> {
-        match self.elements.get(&id) {
-            Some(ElementHandle::Input(input)) => Ok(input.clone()),
-            _ => Err(invalid(format_args!("element {id} is not an HTML input"))),
-        }
-    }
-
-    pub fn text(&self, id: TextId) -> Result<Text, JsValue> {
-        self.texts
-            .get(&id)
-            .cloned()
-            .ok_or_else(|| invalid(format_args!("missing text {id}")))
     }
 }
 
@@ -182,21 +179,25 @@ impl MountMode<'_> {
     }
 }
 
+fn finish_preparation(
+    mounted: Result<Mounted, JsValue>,
+    parent: Option<&OwnerHandle>,
+) -> Result<Mounted, JsValue> {
+    let (mut scope, nodes) = mounted?;
+    scope.finish_owner_preparation(parent);
+    Ok((scope, nodes))
+}
+
+/// The first element of compiler-embedded HTML, parsed in a detached template.
+fn parse_html(html: &str) -> Result<Option<Element>, JsValue> {
+    let wrapper = document()?
+        .create_element("template")?
+        .dyn_into::<HtmlTemplateElement>()?;
+    wrapper.set_inner_html(html);
+    Ok(wrapper.content().first_element_child())
+}
+
 impl TemplateDescriptor {
-    #[doc(hidden)]
-    pub fn mount_with_html(&self, html: &'static str) -> Result<(Scope, TemplateNodes), JsValue> {
-        self.mount_with_points(html, &[])
-    }
-
-    #[doc(hidden)]
-    pub fn mount_with_points(
-        &self,
-        html: &'static str,
-        mounts: &'static [MountId],
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
-        self.mount_with_points_mode(html, mounts, MountMode::Active)
-    }
-
     /// Compiler entry point: retain the final prepared owner and readiness token.
     /// Integration setup still follows successful native descriptor validation.
     #[doc(hidden)]
@@ -205,11 +206,9 @@ impl TemplateDescriptor {
         html: &'static str,
         mounts: &'static [MountId],
         parent: Option<&OwnerHandle>,
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
-        let (mut scope, nodes) =
-            self.mount_with_points_mode(html, mounts, MountMode::Prepared(parent))?;
-        scope.finish_owner_preparation(parent);
-        Ok((scope, nodes))
+    ) -> Result<Mounted, JsValue> {
+        let mounted = self.mount_root(html, mounts, MountMode::Prepared(parent));
+        finish_preparation(mounted, parent)
     }
 
     /// Generated ordinary flat bindings retain the validated native bundle.
@@ -219,26 +218,41 @@ impl TemplateDescriptor {
         &self,
         html: &'static str,
         parent: Option<&OwnerHandle>,
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
+    ) -> Result<Mounted, JsValue> {
         let mode = if super::coherent::parent_is_coherent(parent) {
             MountMode::Prepared(parent)
         } else {
             MountMode::Bundled(parent)
         };
-        let (mut scope, nodes) = self.mount_with_points_mode(html, &[], mode)?;
-        scope.finish_owner_preparation(parent);
-        Ok((scope, nodes))
+        finish_preparation(self.mount_root(html, &[], mode), parent)
     }
 
-    fn mount_with_points_mode(
+    /// Resolve a wrapper-free child group, adopting an existing native range
+    /// during hydration without moving or replacing its nodes.
+    #[doc(hidden)]
+    pub fn prepare_fragment(
+        &self,
+        html: &'static str,
+        mounts: &'static [MountId],
+        parent: Option<&OwnerHandle>,
+    ) -> Result<Mounted, JsValue> {
+        let mounted = self.mount_fragment(html, mounts, MountMode::Prepared(parent));
+        finish_preparation(mounted, parent)
+    }
+
+    pub fn mount(&self) -> Result<Mounted, JsValue> {
+        self.mount_document_root(&[], MountMode::Active)
+    }
+
+    fn mount_root(
         &self,
         _html: &'static str,
         mounts: &'static [MountId],
         mode: MountMode<'_>,
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
+    ) -> Result<Mounted, JsValue> {
         #[cfg(feature = "islands")]
         {
-            if let Some(root) = super::delivery::take_root() {
+            if let Some(root) = super::hydration::take_root() {
                 let metadata = strings::descriptor(self.component, self.version);
                 if !metadata.version_matches(&root) || !metadata.component_matches(&root) {
                     return Err(invalid(
@@ -250,14 +264,7 @@ impl TemplateDescriptor {
                 return self.resolve(scope, mounts, mode.bundled());
             }
             if super::delivery::enabled() {
-                let wrapper = document()?
-                    .create_element("template")?
-                    .dyn_into::<HtmlTemplateElement>()?;
-                wrapper.set_inner_html(_html);
-                let root = wrapper
-                    .content()
-                    .first_element_child()
-                    .ok_or_else(|| invalid("empty delivery template"))?;
+                let root = parse_html(_html)?.ok_or_else(|| invalid("empty delivery template"))?;
                 let scope = match self.kind {
                     RootKind::Template => mode.clone_template(
                         &root
@@ -269,41 +276,17 @@ impl TemplateDescriptor {
                 return self.resolve(scope, mounts, mode.bundled());
             }
         }
-        self.mount_points(mounts, mode)
+        self.mount_document_root(mounts, mode)
     }
 
-    /// Resolve a wrapper-free child group, adopting an existing native range
-    /// during hydration without moving or replacing its nodes.
-    #[doc(hidden)]
-    pub fn mount_fragment(
-        &self,
-        html: &'static str,
-        mounts: &'static [MountId],
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
-        self.mount_fragment_mode(html, mounts, MountMode::Active)
-    }
-
-    #[doc(hidden)]
-    pub fn prepare_fragment(
-        &self,
-        html: &'static str,
-        mounts: &'static [MountId],
-        parent: Option<&OwnerHandle>,
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
-        let (mut scope, nodes) =
-            self.mount_fragment_mode(html, mounts, MountMode::Prepared(parent))?;
-        scope.finish_owner_preparation(parent);
-        Ok((scope, nodes))
-    }
-
-    fn mount_fragment_mode(
+    fn mount_fragment(
         &self,
         html: &'static str,
         mounts: &'static [MountId],
         mode: MountMode<'_>,
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
+    ) -> Result<Mounted, JsValue> {
         let document = document()?;
-        if let Some(target) = super::children::take_hydration() {
+        if let Some(target) = super::hydration::take_range() {
             target.validate()?;
             let start = target
                 .start
@@ -325,13 +308,7 @@ impl TemplateDescriptor {
             scope.hydrating = true;
             return self.resolve(scope, mounts, mode.bundled());
         }
-        let wrapper = document
-            .create_element("template")?
-            .dyn_into::<HtmlTemplateElement>()?;
-        wrapper.set_inner_html(html);
-        let template = wrapper
-            .content()
-            .first_element_child()
+        let template = parse_html(html)?
             .ok_or_else(|| invalid("missing children template"))?
             .dyn_into::<HtmlTemplateElement>()
             .map_err(|_| invalid("expected a children template"))?;
@@ -348,20 +325,12 @@ impl TemplateDescriptor {
         Ok((scope, nodes))
     }
 
-    pub fn mount(&self) -> Result<(Scope, TemplateNodes), JsValue> {
-        self.mount_points(&[], MountMode::Active)
-    }
-
-    fn mount_points(
+    /// Mount the single document root marked with this component's identity.
+    fn mount_document_root(
         &self,
         mounts: &'static [MountId],
         mode: MountMode<'_>,
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
-        if self.version != template::VERSION {
-            return Err(invalid(
-                "unsupported descriptor version; rebuild the application",
-            ));
-        }
+    ) -> Result<Mounted, JsValue> {
         let document = document()?;
         let metadata = strings::descriptor(self.component, self.version);
         let roots = metadata.roots(&document)?;
@@ -392,7 +361,6 @@ impl TemplateDescriptor {
                 mode.clone_template(&template)?
             }
         };
-
         self.resolve(scope, mounts, mode.bundled())
     }
 
@@ -401,23 +369,23 @@ impl TemplateDescriptor {
         scope: Scope,
         expected_mounts: &'static [MountId],
         bundled: bool,
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
+    ) -> Result<Mounted, JsValue> {
         if self.version != template::VERSION {
-            return Err(invalid("unsupported template version"));
+            return Err(invalid(
+                "unsupported descriptor version; rebuild the application",
+            ));
         }
+        let form = |tag| matches!(tag, "input" | "textarea" | "select");
+        let cached = self.kind == RootKind::Template && !scope.hydrating;
         if bundled
             && expected_mounts.is_empty()
             && scope.fragment.is_none()
-            && self.elements.iter().all(|element| {
-                element.children == ChildPolicy::Static
-                    && !matches!(element.tag, "input" | "textarea" | "select")
-            })
             && self
-                .text_elements
+                .elements
                 .iter()
-                .all(|element| !matches!(element.tag, "input" | "textarea" | "select"))
+                .all(|element| element.children == ChildPolicy::Static && !form(element.tag))
+            && self.text_elements.iter().all(|element| !form(element.tag))
         {
-            let cached = self.kind == RootKind::Template && !scope.hydrating;
             let binding_bundle = flat::resolve_bundle(self, scope.root(), cached)?;
             strings::descriptor(self.component, self.version).mark_instance(scope.root())?;
             return Ok((
@@ -442,8 +410,7 @@ impl TemplateDescriptor {
             let (handles, slots, mounts) = flat::resolve(self, scope.root())?;
             return self.finish_resolution(scope, handles, slots, mounts);
         }
-        let cached_template = self.kind == RootKind::Template && !scope.hydrating;
-        if cached_template {
+        if cached {
             if let Some((handles, slots, mounts)) =
                 cache::resolve(self, expected_mounts, scope.root())?
             {
@@ -457,7 +424,7 @@ impl TemplateDescriptor {
             scope.fragment.as_ref(),
             scope.is_hydrating(),
         )?;
-        if cached_template {
+        if cached {
             // Cache construction is optional; inability to retain an inert
             // certificate must not make a correctly validated mount fail.
             let _ = cache::remember(
@@ -478,7 +445,7 @@ impl TemplateDescriptor {
         handles: Handles,
         slots: Vec<Slot>,
         mounts: Mounts,
-    ) -> Result<(Scope, TemplateNodes), JsValue> {
+    ) -> Result<Mounted, JsValue> {
         let document = document()?;
         let mut texts = Nodes::new();
         for Slot {

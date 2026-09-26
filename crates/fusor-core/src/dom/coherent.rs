@@ -5,14 +5,13 @@ mod structure;
 
 use interaction::BlockingOverlay;
 
-use super::{JsValue, Listener, Scope};
+use super::{JsValue, Listener, MountPoint, Scope, is_html};
 use crate::{
-    ContextKey, OwnerHandle, batch,
+    ContextKey, OwnerHandle,
     coherence::{AsyncBoundary, Attempt, Publication},
 };
 use std::{any::Any, cell::RefCell, collections::BTreeMap, rc::Rc};
-use wasm_bindgen::{JsCast, closure::Closure};
-use web_sys::{Element, Event, Text};
+use web_sys::{Element, Event, Node, Text};
 
 type Renderer = dyn Fn(&mut Frame<'_>) -> Result<(), String>;
 struct Context;
@@ -37,13 +36,26 @@ enum SlotId {
 
 pub(super) struct Tree {
     root: Element,
-    fragment: Option<super::MountPoint>,
+    fragment: Option<MountPoint>,
     context: BoundaryContext,
     owner: OwnerHandle,
-    boundary: AsyncBoundary,
     renderer: RefCell<Option<Rc<Renderer>>>,
     slots: RefCell<BTreeMap<SlotId, Rc<dyn Any>>>,
     listeners: RefCell<Vec<Listener>>,
+}
+
+impl Tree {
+    fn new(scope: &Scope, context: BoundaryContext, renderer: Option<Rc<Renderer>>) -> Rc<Self> {
+        Rc::new(Self {
+            root: scope.root().clone(),
+            fragment: scope.fragment.clone(),
+            context,
+            owner: scope.owner(),
+            renderer: RefCell::new(renderer),
+            slots: RefCell::new(BTreeMap::new()),
+            listeners: RefCell::new(Vec::new()),
+        })
+    }
 }
 
 // Query only inherited metadata. Integration setup still follows successful
@@ -58,18 +70,7 @@ impl Scope {
     pub(super) fn prepare_coherent(&mut self, parent: Option<&OwnerHandle>) {
         self.render_tree = parent
             .and_then(|owner| owner.context::<Context>())
-            .map(|context| {
-                Rc::new(Tree {
-                    owner: self.owner(),
-                    root: self.root().clone(),
-                    fragment: self.fragment.clone(),
-                    context: (*context).clone(),
-                    boundary: context.boundary.clone(),
-                    renderer: RefCell::new(None),
-                    slots: RefCell::new(BTreeMap::new()),
-                    listeners: RefCell::new(Vec::new()),
-                })
-            });
+            .map(|context| Tree::new(self, (*context).clone(), None));
     }
 
     #[doc(hidden)]
@@ -115,17 +116,8 @@ impl Scope {
             .owner()
             .provide::<Context>(context.clone())
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        region.render_tree = Some(Rc::new(Tree {
-            root: root.clone(),
-            fragment: None,
-            context,
-            owner: region.owner(),
-            boundary: boundary.clone(),
-            renderer: RefCell::new(Some(Rc::new(render))),
-            slots: RefCell::new(BTreeMap::new()),
-            listeners: RefCell::new(Vec::new()),
-        }));
-        let tree = region.render_tree.as_ref().expect("region").clone();
+        let tree = Tree::new(&region, context, Some(Rc::new(render)));
+        region.render_tree = Some(tree.clone());
         let captured_root = root.clone();
         let mounted = boundary
             .attach(&region.owner(), move |attempt| {
@@ -150,10 +142,7 @@ fn error(value: JsValue) -> String {
     value.as_string().unwrap_or_else(|| format!("{value:?}"))
 }
 fn allowed(element: &Element) -> Result<(), String> {
-    if element.local_name().contains('-')
-        || element.has_attribute("is")
-        || element.namespace_uri().as_deref() != Some("http://www.w3.org/1999/xhtml")
-    {
+    if element.local_name().contains('-') || element.has_attribute("is") || !is_html(element) {
         return Err(
             "custom elements and foreign DOM cannot participate in coherent patches".into(),
         );
@@ -169,22 +158,25 @@ enum Patch {
 }
 impl Patch {
     fn apply(&self, reverse: bool) -> Result<(), String> {
+        fn pick<T>(reverse: bool, next: T, old: T) -> T {
+            if reverse { old } else { next }
+        }
         match self {
             Self::Inert(context, next, old) => context
                 .overlay
-                .set_authored_inert(if reverse { *old } else { *next })
+                .set_authored_inert(pick(reverse, *next, *old))
                 .map_err(error),
             Self::Text(node, next, old) => {
-                node.set_data(if reverse { old } else { next });
+                node.set_data(pick(reverse, next, old));
                 Ok(())
             }
-            Self::Attribute(node, name, next, old) => match if reverse { old } else { next } {
+            Self::Attribute(node, name, next, old) => match pick(reverse, next, old) {
                 Some(value) => node.set_attribute(name, value).map_err(error),
                 None => node.remove_attribute(name).map_err(error),
             },
             Self::Class(node, name, next, old) => node
                 .class_list()
-                .toggle_with_force(name, if reverse { *old } else { *next })
+                .toggle_with_force(name, pick(reverse, *next, *old))
                 .map(|_| ())
                 .map_err(error),
         }
@@ -202,7 +194,7 @@ struct Prepared {
     structures: Vec<Box<dyn Structure>>,
     listeners: Vec<(Rc<Tree>, Vec<Listener>)>,
     roots: Vec<Element>,
-    targets: Vec<(Rc<Tree>, web_sys::Node)>,
+    targets: Vec<(Rc<Tree>, Node)>,
 }
 impl Publication for Prepared {
     fn validate(&self) -> Result<(), String> {
@@ -238,8 +230,7 @@ impl Publication for Prepared {
     }
     fn finish(self: Box<Self>) {
         for (tree, listeners) in self.listeners {
-            let old = tree.listeners.replace(listeners);
-            drop(old);
+            tree.listeners.replace(listeners);
         }
         for structure in self.structures {
             structure.finish();
@@ -279,10 +270,14 @@ impl Frame<'_> {
     pub fn reject(&self, reason: &str) -> Result<(), String> {
         Err(reason.into())
     }
-    pub fn text(&mut self, node: &Text, value: impl ToString) -> Result<(), String> {
+    /// Require `node` to stay inside this component until publication.
+    fn target(&mut self, node: &Node) {
         self.publication
             .targets
-            .push((self.tree.clone(), node.clone().into()));
+            .push((self.tree.clone(), node.clone()));
+    }
+    pub fn text(&mut self, node: &Text, value: impl ToString) -> Result<(), String> {
+        self.target(node);
         let next = value.to_string();
         let old = node.data();
         if next != old {
@@ -294,9 +289,7 @@ impl Frame<'_> {
     }
     pub fn attr(&mut self, node: &Element, name: &str, next: Option<String>) -> Result<(), String> {
         allowed(node)?;
-        self.publication
-            .targets
-            .push((self.tree.clone(), node.clone().into()));
+        self.target(node);
         if name == "inert" && self.tree.context.overlay.owns_root(node) {
             let old = self.tree.context.overlay.authored_inert();
             self.publication.patches.push(Patch::Inert(
@@ -322,9 +315,7 @@ impl Frame<'_> {
         if name.is_empty() || name.chars().any(char::is_whitespace) {
             return Err("invalid coherent class name".into());
         }
-        self.publication
-            .targets
-            .push((self.tree.clone(), node.clone().into()));
+        self.target(node);
         let old = node.class_list().contains(name);
         if old != next {
             self.publication
@@ -341,20 +332,10 @@ impl Frame<'_> {
     ) -> Result<(), String> {
         allowed(node)?;
         let owner = self.tree.owner.clone();
-        let boundary = self.tree.boundary.clone();
-        let handler = RefCell::new(handler);
-        let callback = Closure::wrap(Box::new(move |event| {
-            if owner.is_active() && boundary.is_interactive() {
-                batch(|| (handler.borrow_mut())(event));
-            }
-        }) as Box<dyn Fn(Event)>);
-        node.add_event_listener_with_callback(event, callback.as_ref().unchecked_ref())
-            .map_err(error)?;
-        self.listeners.push(Listener {
-            target: node.clone().into(),
-            event: event.into(),
-            callback,
-        });
+        let boundary = self.tree.context.boundary.clone();
+        let active = move || owner.is_active() && boundary.is_interactive();
+        let listener = Listener::new(node.clone().into(), event, active, handler).map_err(error)?;
+        self.listeners.push(listener);
         Ok(())
     }
 }

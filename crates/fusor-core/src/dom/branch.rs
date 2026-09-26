@@ -1,6 +1,6 @@
 //! Retained, wrapper-free structural branches. Same-case data changes never
 //! replace the branch's owner; a different case is prepared before replacement.
-use super::{JsValue, MountPoint, Scope};
+use super::{JsValue, MountPoint, Scope, component::Retained, hydration};
 use crate::{OwnerHandle, Signal, signal, untrack};
 
 impl Scope {
@@ -14,23 +14,24 @@ impl Scope {
         let mut hydrating = self.is_hydrating();
         let target = target.clone();
         let parent = self.owner();
-        let mut current: Option<(usize, Signal<T>, Scope)> = None;
+        let mut current: Retained<(usize, Signal<T>)> = Retained::default();
         self.bind(move || {
-            let (key, data) = read();
+            let (case, data) = read();
             untrack(|| {
-                if let Some((old, value, _)) = &current {
-                    if *old == key {
+                if let Some((shown, value)) = current.key() {
+                    if *shown == case {
                         value.set(data);
                         return Ok(());
                     }
                 }
-                let initial = std::mem::take(&mut hydrating);
-                let hydration = if initial {
+                // The server marks the case it rendered just after `start`;
+                // the branch's own range runs from there to `end`.
+                let server = if std::mem::take(&mut hydrating) {
                     let marker = target
                         .start
                         .next_sibling()
                         .ok_or_else(|| JsValue::from_str("missing server branch marker"))?;
-                    if marker.node_value().as_deref() != Some(&format!("fusor:branch:{key}")) {
+                    if marker.node_value().as_deref() != Some(&format!("fusor:branch:{case}")) {
                         return Err(JsValue::from_str(
                             "server branch differs from browser branch",
                         ));
@@ -43,23 +44,24 @@ impl Scope {
                     None
                 };
                 let value = signal(data);
-                let child = super::children::with_hydration(hydration.clone(), || {
-                    prepare(key, value.clone(), &parent)
+                let child = hydration::with_range(server.clone(), || {
+                    prepare(case, value.clone(), &parent)
                 })?;
-                child.finish_prepare()?;
-                if let Some(hydration) = hydration {
-                    hydration
+                let adopted = server.is_some();
+                current.replace((case, value), child, |child| {
+                    if adopted {
+                        Ok(())
+                    } else {
+                        child.attach_fragment(&target)
+                    }
+                })?;
+                if let Some(server) = server {
+                    server
                         .start
                         .parent_node()
-                        .unwrap()
-                        .remove_child(&hydration.start)?;
+                        .expect("server branch marker follows an anchor")
+                        .remove_child(&server.start)?;
                 }
-                if !initial {
-                    child.attach_fragment(&target)?;
-                }
-                let old = current.replace((key, value, child));
-                drop(old);
-                current.as_ref().expect("inserted branch").2.try_commit()?;
                 Ok(())
             })
         })

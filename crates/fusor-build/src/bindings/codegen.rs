@@ -388,7 +388,7 @@ fn invocation(
         let __fusor_child_state = ::std::rc::Rc::clone(&state);
         let __fusor_supplied = #children;
         let __fusor_children = __fusor_children.clone();
-        __fusor_scope.component_at_with_children(&#point, { #local_clones move || {
+        __fusor_scope.component_at(&#point, { #local_clones move || {
             let state = &__fusor_identity_state;
             if #condition { ::std::option::Option::Some({ #key }) }
             else { ::std::option::Option::None }
@@ -765,7 +765,7 @@ fn prepare(component: &Component, html: &TokenStream, ctx: Ctx) -> TokenStream {
                 #local_clones
                 #capture_ready
                 #incoming
-                let __fusor_mount_guard = ::fusor::dom::MountGuard::enter()?;
+                let __fusor_nesting = ::fusor::dom::NestingGuard::enter()?;
                 #declarations
                 let (mut __fusor_scope, mut __fusor_nodes) = #mount;
                 let state = if __fusor_scope.prepares_effects() {

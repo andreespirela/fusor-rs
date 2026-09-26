@@ -1,6 +1,6 @@
 //! Reuse JS string arguments for native DOM calls, without interning dynamic
 //! application values or adding a cache lookup to every Wasm string conversion.
-use crate::template::ComponentId;
+use crate::template::{self, ComponentId};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 use wasm_bindgen::{JsCast, prelude::*};
 use web_sys::{Document, Element, EventTarget, NodeList};
@@ -45,55 +45,64 @@ extern "C" {
     fn remove(this: &StringTarget, name: &JsValue, callback: &JsValue) -> Result<(), JsValue>;
 }
 
-pub(super) enum Attribute {
-    Element = 2,
-    Key = 3,
+/// Framework names, in `NAMES` order.
+#[derive(Clone, Copy)]
+pub(super) enum Name {
+    #[cfg_attr(not(feature = "islands"), allow(dead_code))]
+    Component,
+    Version,
+    Element,
+    Key,
+    Click,
+    Input,
+    Change,
+    Instance,
 }
 
 thread_local! {
     // These names are framework syntax. The cache cannot grow with input data.
     static NAMES: [JsValue; 8] = [
-        crate::template::COMPONENT_ATTRIBUTE,
-        crate::template::VERSION_ATTRIBUTE,
-        crate::template::ELEMENT_ATTRIBUTE,
-        "data-fusor-key", "click", "input", "change", crate::template::INSTANCE_ATTRIBUTE,
+        template::COMPONENT_ATTRIBUTE,
+        template::VERSION_ATTRIBUTE,
+        template::ELEMENT_ATTRIBUTE,
+        "data-fusor-key", "click", "input", "change", template::INSTANCE_ATTRIBUTE,
     ].map(JsValue::from_str);
 }
 
-pub(super) fn attribute(element: &Element, name: Attribute) -> Option<String> {
-    NAMES.with(|names| {
-        element
-            .unchecked_ref::<StringElement>()
-            .attribute(&names[name as usize])
-    })
+fn with_name<R>(name: Name, call: impl FnOnce(&JsValue) -> R) -> R {
+    NAMES.with(|names| call(&names[name as usize]))
+}
+
+fn string_element(element: &Element) -> &StringElement {
+    element.unchecked_ref()
+}
+
+pub(super) fn attribute(element: &Element, name: Name) -> Option<String> {
+    with_name(name, |name| string_element(element).attribute(name))
 }
 
 pub(super) enum EventName {
-    Cached(usize),
+    Cached(Name),
     Owned(JsValue),
 }
 
 impl From<&str> for EventName {
     fn from(name: &str) -> Self {
-        event(name)
+        match name {
+            "click" => Self::Cached(Name::Click),
+            "input" => Self::Cached(Name::Input),
+            "change" => Self::Cached(Name::Change),
+            _ => Self::Owned(JsValue::from_str(name)),
+        }
     }
 }
 
 impl EventName {
     fn with<R>(&self, call: impl FnOnce(&JsValue) -> R) -> R {
         match self {
-            Self::Cached(index) => NAMES.with(|names| call(&names[*index])),
+            Self::Cached(name) => with_name(*name, call),
             Self::Owned(value) => call(value),
         }
-    }
-}
-
-pub(super) fn event(name: &str) -> EventName {
-    match name {
-        "click" => EventName::Cached(4),
-        "input" => EventName::Cached(5),
-        "change" => EventName::Cached(6),
-        _ => EventName::Owned(JsValue::from_str(name)),
     }
 }
 
@@ -131,37 +140,23 @@ thread_local! {
 }
 
 pub(super) fn descriptor(component: ComponentId, version: u32) -> Rc<DescriptorStrings> {
-    let cached = DESCRIPTORS.with(|descriptors| {
-        descriptors
-            .borrow()
-            .iter()
-            .rev()
-            .find(|entry| entry.component == component && entry.version == version)
-            .cloned()
-    });
-    if let Some(cached) = cached {
-        return cached;
-    }
-    // No registry borrow crosses JS calls, including reentrant native methods.
-    let entry = Rc::new(DescriptorStrings {
-        component,
-        version,
-        selector: JsValue::from_str(&format!(
-            "[{}=\"{}\"]",
-            crate::template::COMPONENT_ATTRIBUTE,
-            component
-        )),
-        schema: JsValue::from_str(&version.to_string()),
-        identity: JsValue::from_str(&component.to_string()),
-    });
-    DESCRIPTORS.with(|descriptors| {
-        let mut descriptors = descriptors.borrow_mut();
-        if descriptors.len() >= 32 {
-            descriptors.pop_front();
-        }
-        descriptors.push_back(entry.clone());
-    });
-    entry
+    super::cached(
+        &DESCRIPTORS,
+        32,
+        |entry| entry.component == component && entry.version == version,
+        || {
+            Rc::new(DescriptorStrings {
+                component,
+                version,
+                selector: JsValue::from_str(&format!(
+                    "[{}=\"{component}\"]",
+                    template::COMPONENT_ATTRIBUTE
+                )),
+                schema: JsValue::from_str(&version.to_string()),
+                identity: JsValue::from_str(&component.to_string()),
+            })
+        },
+    )
 }
 
 impl DescriptorStrings {
@@ -170,57 +165,40 @@ impl DescriptorStrings {
             .unchecked_ref::<StringDocument>()
             .query(&self.selector)
     }
+
     pub(super) fn version_matches(&self, element: &Element) -> bool {
-        NAMES.with(|names| {
-            element
-                .unchecked_ref::<StringElement>()
-                .attribute_value(&names[1])
-                == self.schema
+        with_name(Name::Version, |name| {
+            string_element(element).attribute_value(name) == self.schema
         })
     }
+
     #[cfg(feature = "islands")]
     pub(super) fn component_matches(&self, element: &Element) -> bool {
-        NAMES.with(|names| {
-            element
-                .unchecked_ref::<StringElement>()
-                .attribute_value(&names[0])
-                == self.identity
+        with_name(Name::Component, |name| {
+            string_element(element).attribute_value(name) == self.identity
         })
     }
+
     pub(super) fn mark_instance(&self, element: &Element) -> Result<(), JsValue> {
-        NAMES.with(|names| {
-            element
-                .unchecked_ref::<StringElement>()
-                .set_attribute_value(&names[7], &self.identity)
+        with_name(Name::Instance, |name| {
+            string_element(element).set_attribute_value(name, &self.identity)
         })
     }
 }
 
 // Generated attribute names are static program metadata, never application
 // values. Bound the shared registry; effects retain their immutable name if an
-// entry is evicted. No registry borrow crosses the JS string conversion.
+// entry is evicted.
 thread_local! {
     static STATIC_ATTRIBUTES: RefCell<VecDeque<(&'static str, Rc<JsValue>)>> = const { RefCell::new(VecDeque::new()) };
 }
 
 pub(super) fn static_attribute(name: &'static str) -> Rc<JsValue> {
-    let found = STATIC_ATTRIBUTES.with(|names| {
-        names
-            .borrow()
-            .iter()
-            .find(|(key, _)| *key == name)
-            .map(|(_, value)| Rc::clone(value))
-    });
-    if let Some(found) = found {
-        return found;
-    }
-    let value = Rc::new(JsValue::from_str(name));
-    STATIC_ATTRIBUTES.with(|names| {
-        let mut names = names.borrow_mut();
-        if names.len() >= 64 {
-            names.pop_front();
-        }
-        names.push_back((name, Rc::clone(&value)));
-    });
-    value
+    super::cached(
+        &STATIC_ATTRIBUTES,
+        64,
+        |(key, _)| *key == name,
+        || (name, Rc::new(JsValue::from_str(name))),
+    )
+    .1
 }

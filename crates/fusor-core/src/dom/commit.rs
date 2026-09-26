@@ -28,19 +28,16 @@ impl Scope {
             self.mount_queue = None;
             return;
         }
-        self.mount_queue = Some(
-            match parent.and_then(|parent| parent.context::<MountContext>()) {
-                Some(queue) => queue,
-                None => {
-                    self.owner()
-                        .provide::<MountContext>(CommitQueue::default())
-                        .expect("fresh component owner");
-                    self.owner()
-                        .context::<MountContext>()
-                        .expect("just provided")
-                }
-            },
-        );
+        let queue = parent
+            .and_then(|parent| parent.context::<MountContext>())
+            .unwrap_or_else(|| {
+                let owner = self.owner();
+                owner
+                    .provide::<MountContext>(CommitQueue::default())
+                    .expect("fresh component owner");
+                owner.context::<MountContext>().expect("just provided")
+            });
+        self.mount_queue = Some(queue);
     }
 
     /// Internal integration boundary for fallible browser setup. The callback

@@ -1,45 +1,47 @@
-//! The rows in a longest increasing subsequence are already in relative order.
-//! New rows use usize::MAX and must be inserted; every other row outside the
-//! subsequence needs exactly one move. No DOM inspection is needed per survivor.
+/// The previous position of a row that was just rendered and is not yet in
+/// the list. Such a row is never stationary: it always needs an insertion.
+pub(super) const NEW: usize = usize::MAX;
+
+/// Mark the rows that can stay where they are while the others move.
+///
+/// `positions[i]` is the previous index of the row now at `i`, or [`NEW`].
+/// Positions are distinct. The result marks one longest strictly increasing
+/// run of previous positions: those rows are already in relative order, so
+/// each unmarked row needs exactly one move or insertion. When several runs
+/// are equally long, which one is marked is unspecified.
 pub(super) fn stationary(positions: &[usize]) -> Vec<bool> {
-    let mut last = None;
-    let ordered = positions
+    let existing = |position: &usize| *position != NEW;
+    // Rows were only added or removed: every existing row stays, in O(n).
+    if positions
         .iter()
-        .copied()
-        .filter(|&p| p != usize::MAX)
-        .all(|p| {
-            let increasing = last.is_none_or(|previous| previous < p);
-            last = Some(p);
-            increasing
-        });
-    if ordered {
-        return positions.iter().map(|&p| p != usize::MAX).collect();
+        .filter(|position| existing(position))
+        .is_sorted_by(|left, right| left < right)
+    {
+        return positions.iter().map(existing).collect();
     }
-    let mut keep = vec![false; positions.len()];
-    let mut previous = vec![usize::MAX; positions.len()];
+    // Patience sorting in O(n log n). `tails[k]` is the row that ends the
+    // increasing run of length k + 1 with the smallest last position so far;
+    // `predecessor[row]` is the row before it in the best run ending at `row`.
     let mut tails: Vec<usize> = Vec::new();
-    for (index, &position) in positions.iter().enumerate() {
-        if position == usize::MAX {
+    let mut predecessor: Vec<Option<usize>> = vec![None; positions.len()];
+    for (row, position) in positions.iter().enumerate() {
+        if !existing(position) {
             continue;
         }
-        let slot = tails.partition_point(|&tail| positions[tail] < position);
-        if slot > 0 {
-            previous[index] = tails[slot - 1];
-        }
-        if slot == tails.len() {
-            tails.push(index);
+        let length = tails.partition_point(|&tail| positions[tail] < *position);
+        predecessor[row] = length.checked_sub(1).map(|shorter| tails[shorter]);
+        if length == tails.len() {
+            tails.push(row);
         } else {
-            tails[slot] = index;
+            tails[length] = row;
         }
     }
-    if let Some(&last) = tails.last() {
-        let mut index = last;
-        while index != usize::MAX {
-            keep[index] = true;
-            index = previous[index];
-        }
+    let mut stationary = vec![false; positions.len()];
+    let run = std::iter::successors(tails.last().copied(), |&row| predecessor[row]);
+    for row in run {
+        stationary[row] = true;
     }
-    keep
+    stationary
 }
 
 /// Borrowed uniqueness validation and a merge cursor for ascending map keys.
@@ -53,7 +55,7 @@ impl<'a, K: Ord> SortedKeys<'a, K> {
     pub(super) fn new(keys: &'a [K]) -> Option<Self> {
         let mut sorted: Vec<_> = keys.iter().collect();
         sorted.sort_unstable();
-        if sorted.windows(2).any(|pair| pair[0].cmp(pair[1]).is_eq()) {
+        if sorted.windows(2).any(|pair| pair[0] == pair[1]) {
             return None;
         }
         Some(Self {
@@ -122,53 +124,66 @@ mod tests {
         assert!(SortedKeys::new(&[Key(5), Key(1), Key(5)]).is_none());
     }
 
-    fn check(values: &mut [usize], offset: usize) {
-        if offset < values.len() {
-            for index in offset..values.len() {
-                values.swap(offset, index);
-                check(values, offset + 1);
-                values.swap(offset, index);
-            }
-            return;
-        }
-        let keep = stationary(values);
-        let retained: Vec<_> = values
-            .iter()
-            .zip(&keep)
-            .filter_map(|(v, k)| k.then_some(*v))
-            .collect();
-        assert!(retained.windows(2).all(|pair| pair[0] < pair[1]));
-        // Independent exhaustive oracle, including every possible subsequence.
-        let best = (0..1usize << values.len())
+    /// The length of the longest strictly increasing run of existing rows,
+    /// by trying every subsequence.
+    fn longest(positions: &[usize]) -> usize {
+        (0..1usize << positions.len())
             .filter_map(|mask| {
-                let sequence: Vec<_> = values
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, v)| (mask & (1 << i) != 0).then_some(*v))
+                let run: Vec<_> = (0..positions.len())
+                    .filter(|&row| mask & (1 << row) != 0)
+                    .map(|row| positions[row])
                     .collect();
-                sequence
-                    .windows(2)
-                    .all(|pair| pair[0] < pair[1])
-                    .then_some(sequence.len())
+                let valid = run.iter().all(|&position| position != NEW)
+                    && run.windows(2).all(|pair| pair[0] < pair[1]);
+                valid.then_some(run.len())
             })
             .max()
-            .unwrap();
-        assert_eq!(retained.len(), best, "{values:?}");
+            .unwrap()
+    }
+
+    fn check(positions: &[usize]) {
+        let kept: Vec<_> = positions
+            .iter()
+            .zip(stationary(positions))
+            .filter_map(|(&position, keep)| keep.then_some(position))
+            .collect();
+        assert!(!kept.contains(&NEW), "{positions:?}");
+        assert!(
+            kept.windows(2).all(|pair| pair[0] < pair[1]),
+            "{positions:?}"
+        );
+        assert_eq!(kept.len(), longest(positions), "{positions:?}");
+    }
+
+    fn permutations(values: &mut [usize], offset: usize, visit: &mut impl FnMut(&[usize])) {
+        if offset == values.len() {
+            return visit(values);
+        }
+        for index in offset..values.len() {
+            values.swap(offset, index);
+            permutations(values, offset + 1, visit);
+            values.swap(offset, index);
+        }
     }
 
     #[test]
-    fn all_small_permutations_have_the_minimum_move_count() {
-        for size in 0..=7 {
-            check(&mut (0..size).collect::<Vec<_>>(), 0);
+    fn every_small_reorder_moves_the_fewest_rows() {
+        for size in 0..=6 {
+            permutations(&mut (0..size).collect::<Vec<_>>(), 0, &mut |order| {
+                check(order);
+                // A new row can arrive anywhere in the list.
+                for at in 0..=order.len() {
+                    let mut inserted = order.to_vec();
+                    inserted.insert(at, NEW);
+                    check(&inserted);
+                }
+            });
         }
     }
 
     #[test]
     fn insertions_are_never_stationary_and_deletion_gaps_do_not_move_survivors() {
-        assert_eq!(
-            stationary(&[0, usize::MAX, 3, 7]),
-            [true, false, true, true]
-        );
-        assert_eq!(stationary(&[usize::MAX; 3]), [false; 3]);
+        assert_eq!(stationary(&[0, NEW, 3, 7]), [true, false, true, true]);
+        assert_eq!(stationary(&[NEW; 3]), [false; 3]);
     }
 }
