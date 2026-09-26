@@ -127,6 +127,7 @@ ci-browser:
     just test benchmark-runtime
     just test template-resolution
     just test direct-text
+    just test component-hydration
     just test bundle-bindings
     just test coherent
     just test islands

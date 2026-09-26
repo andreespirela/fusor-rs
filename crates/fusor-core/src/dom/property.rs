@@ -104,10 +104,7 @@ impl Scope {
             ));
         }
         let element = target.resolve(self)?;
-        if !element.local_name().contains('-')
-            || element.namespace_uri().as_deref() != Some("http://www.w3.org/1999/xhtml")
-            || name.is_empty()
-        {
+        if !element.local_name().contains('-') || !is_html(&element) || name.is_empty() {
             return Err(JsValue::from_str(
                 "fusor: prop:name requires a custom element and a nonempty property name",
             ));

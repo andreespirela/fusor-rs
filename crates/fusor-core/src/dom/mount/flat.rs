@@ -1,14 +1,16 @@
 //! Keep the protocol scan next to the DOM for shapes with no managed subtrees.
 //! The bounded registry owns descriptor metadata and inert certificates, never
 //! application nodes. Typed resolution and native bundle binding share its plans.
-use super::Scope;
 #[cfg(feature = "islands")]
 use super::{ElementHandle, Handles, Mounts, Resolution, Slot, TextPosition};
+use super::{Scope, strings};
 use crate::template::{ElementDescriptor, TemplateDescriptor, TextElementDescriptor, TextId};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 #[cfg(feature = "islands")]
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
+#[cfg(feature = "islands")]
+use web_sys::Text;
 use web_sys::{Element, Event};
 
 #[wasm_bindgen(module = "/src/dom/mount/flat.js")]
@@ -55,59 +57,34 @@ thread_local! {
 }
 
 fn plan(descriptor: &TemplateDescriptor) -> Rc<Plan> {
-    let found = PLANS.with(|plans| {
-        plans
-            .borrow()
-            .iter()
-            .find(|plan| {
-                std::ptr::eq(plan.elements, descriptor.elements)
-                    && std::ptr::eq(plan.texts, descriptor.texts)
-                    && std::ptr::eq(plan.text_elements, descriptor.text_elements)
-            })
-            .cloned()
-    });
-    found.unwrap_or_else(|| {
-        let elements = descriptor
-            .elements
-            .iter()
-            .map(|element| JsValue::from_str(&element.id.to_string()))
-            .collect();
+    let matches = |plan: &Rc<Plan>| {
+        std::ptr::eq(plan.elements, descriptor.elements)
+            && std::ptr::eq(plan.texts, descriptor.texts)
+            && std::ptr::eq(plan.text_elements, descriptor.text_elements)
+    };
+    crate::dom::cached(&PLANS, 32, matches, || {
+        let js = |value: &dyn std::fmt::Display| JsValue::from_str(&value.to_string());
+        let elements = descriptor.elements.iter().map(|element| js(&element.id));
         let tags = descriptor
             .elements
             .iter()
-            .map(|element| JsValue::from_str(element.tag))
-            .collect();
-        let texts = descriptor
-            .texts
-            .iter()
-            .map(|id| JsValue::from_str(&id.to_string()))
-            .collect();
-        let text_elements = descriptor
-            .text_elements
-            .iter()
-            .flat_map(|text| {
-                [
-                    JsValue::from_str(&text.id.to_string()),
-                    text.host
-                        .map_or(JsValue::NULL, |host| JsValue::from_str(&host.to_string())),
-                    JsValue::from_str(text.tag),
-                ]
-            })
-            .collect();
-        let plan = Rc::new(Plan {
+            .map(|element| JsValue::from_str(element.tag));
+        let texts = descriptor.texts.iter().map(|id| js(id));
+        let text_elements = descriptor.text_elements.iter().flat_map(|text| {
+            let host = text.host.map_or(JsValue::NULL, |host| js(&host));
+            [js(&text.id), host, JsValue::from_str(text.tag)]
+        });
+        Rc::new(Plan {
             elements: descriptor.elements,
             texts: descriptor.texts,
             text_elements: descriptor.text_elements,
-            native: create_plan(&elements, &tags, &texts, &text_elements),
-        });
-        PLANS.with(|plans| {
-            let mut plans = plans.borrow_mut();
-            if plans.len() >= 32 {
-                plans.pop_front();
-            }
-            plans.push_back(plan.clone());
-        });
-        plan
+            native: create_plan(
+                &elements.collect(),
+                &tags.collect(),
+                &texts.collect(),
+                &text_elements.collect(),
+            ),
+        })
     })
 }
 
@@ -137,34 +114,32 @@ pub(super) fn resolve(
         };
         handles.insert(element.id, handle);
     }
+    let existing = |index| -> Result<Option<Text>, JsValue> {
+        let text = nodes.get(index);
+        Ok(if text.is_null() {
+            None
+        } else {
+            Some(text.dyn_into()?)
+        })
+    };
     let mut slots = Vec::with_capacity(descriptor.texts.len() + descriptor.text_elements.len());
     for (index, id) in descriptor.texts.iter().enumerate() {
         let offset = (descriptor.elements.len() + index * 3) as u32;
-        let text = nodes.get(offset + 2);
         slots.push(Slot {
             id: *id,
             position: TextPosition::Anchored {
                 start: nodes.get(offset).dyn_into()?,
                 end: nodes.get(offset + 1).dyn_into()?,
             },
-            existing: if text.is_null() {
-                None
-            } else {
-                Some(text.dyn_into()?)
-            },
+            existing: existing(offset + 2)?,
         });
     }
     for (index, expected) in descriptor.text_elements.iter().enumerate() {
         let offset = (descriptor.elements.len() + descriptor.texts.len() * 3 + index * 2) as u32;
-        let text = nodes.get(offset + 1);
         slots.push(Slot {
             id: expected.id,
             position: TextPosition::Element(nodes.get(offset).dyn_into()?),
-            existing: if text.is_null() {
-                None
-            } else {
-                Some(text.dyn_into()?)
-            },
+            existing: existing(offset + 1)?,
         });
     }
     handles.finish();
@@ -207,7 +182,7 @@ impl Scope {
         read: impl Fn() -> Option<String> + 'static,
     ) -> Result<(), JsValue> {
         let nodes = Rc::clone(nodes);
-        let name = crate::dom::strings::static_attribute(name);
+        let name = strings::static_attribute(name);
         self.bind_dom(move || match read() {
             Some(value) => binding_set_attribute(&nodes, index, &name, &value),
             None => binding_remove_attribute(&nodes, index, &name),

@@ -1,12 +1,19 @@
-#[cfg(feature = "islands")]
-use super::delivery;
-use super::{ElementTarget, JsValue, Scope, document, reconcile, strings};
+use super::{
+    ElementTarget, JsValue, Scope, document, reconcile, remove_tree, strings, with_native_root,
+};
 use crate::{Signal, signal, untrack};
 use std::{cell::Cell, collections::BTreeMap};
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlElement, HtmlInputElement};
+use web_sys::{Document, Element, HtmlElement, HtmlInputElement, Node};
 
 type EncodeKey<K> = dyn Fn(&K) -> Result<String, JsValue>;
+
+struct Row<T> {
+    state: Signal<T>,
+    scope: Scope,
+    /// Index in the previous list, or [`reconcile::NEW`] for a detached root.
+    position: Cell<usize>,
+}
 
 impl Scope {
     /// Reconcile a list by stable keys, retaining nodes, focus, and row scopes.
@@ -57,7 +64,7 @@ impl Scope {
     {
         let hydrating = self.is_hydrating();
         let container = target.resolve(self)?;
-        let mut rows: BTreeMap<K, (Signal<T>, Scope, Cell<usize>)> = BTreeMap::new();
+        let mut rows: BTreeMap<K, Row<T>> = BTreeMap::new();
         let mut initialized = false;
         self.bind(move || {
             let items = items();
@@ -65,87 +72,53 @@ impl Scope {
                 let keys: Vec<K> = items.iter().map(&key).collect();
                 let mut unique = reconcile::SortedKeys::new(&keys)
                     .ok_or_else(|| JsValue::from_str("fusor: duplicate key in list"))?;
-                let mut native_rows = Vec::new();
-                if hydrating && !initialized {
+                let native_rows = if hydrating && !initialized {
                     let encode = encode.as_ref().ok_or_else(|| {
                         JsValue::from_str("hydrated lists require generated key metadata")
                     })?;
-                    let mut node = container.first_element_child();
-                    for key in &keys {
-                        let row = node
-                            .take()
-                            .ok_or_else(|| JsValue::from_str("missing native row"))?;
-                        if strings::attribute(&row, strings::Attribute::Key).as_deref()
-                            != Some(encode(key)?.as_str())
-                        {
-                            return Err(JsValue::from_str("native row key mismatch"));
-                        }
-                        node = row.next_element_sibling();
-                        native_rows.push(row);
-                    }
-                    if node.is_some() {
-                        return Err(JsValue::from_str("unexpected native row"));
-                    }
-                }
+                    server_rows(&container, &keys, encode)?
+                } else {
+                    Vec::new()
+                };
                 let document = document()?;
-                let focused = document
-                    .active_element()
-                    .filter(|node| container.contains(Some(node)))
-                    .and_then(|node| node.dyn_into::<HtmlElement>().ok());
-                let selection = focused
-                    .as_ref()
-                    .and_then(|node| node.dyn_ref::<HtmlInputElement>())
-                    .and_then(|input| {
-                        Some((
-                            input.selection_start().ok()??,
-                            input.selection_end().ok()??,
-                            input.selection_direction().ok()??,
-                        ))
-                    });
+                let focused = focused(&document, &container);
                 // Stage new scopes before touching the visible list. A failing
                 // render drops all staged listeners and leaves old rows intact.
                 let mut staged = BTreeMap::new();
                 for (index, (key, item)) in keys.iter().zip(&items).enumerate() {
-                    if !rows.contains_key(key) {
-                        let state = signal(item.clone());
-                        #[cfg(feature = "islands")]
-                        let scope = if let Some(root) = native_rows.get(index) {
-                            delivery::with_root(root, || render(state.clone()))?
-                        } else {
-                            render(state.clone())?
-                        };
-                        #[cfg(not(feature = "islands"))]
-                        let scope = {
-                            let _ = index;
-                            render(state.clone())?
-                        };
-                        // Server rows already occupy their final positions. Newly
-                        // rendered roots are detached and must be inserted.
-                        let position = if native_rows.is_empty() {
-                            usize::MAX
-                        } else {
-                            index
-                        };
-                        staged.insert(key.clone(), (state, scope, Cell::new(position)));
+                    if rows.contains_key(key) {
+                        continue;
                     }
+                    let state = signal(item.clone());
+                    let native = native_rows.get(index);
+                    let scope = with_native_root(native, || render(state.clone()))?;
+                    // Server rows already occupy their final positions. Newly
+                    // rendered roots are detached and must be inserted.
+                    let position = Cell::new(native.map_or(reconcile::NEW, |_| index));
+                    staged.insert(
+                        key.clone(),
+                        Row {
+                            state,
+                            scope,
+                            position,
+                        },
+                    );
                 }
-                for (_, row, _) in staged.values() {
-                    row.finish_prepare()?;
+                for row in staged.values() {
+                    row.scope.finish_prepare()?;
                 }
                 if !initialized {
                     if !hydrating {
                         #[cfg(feature = "islands")]
-                        delivery::dispose_tree(&container);
+                        super::delivery::dispose_tree(&container);
                         container.set_text_content(None);
                     }
                     initialized = true;
                 }
-                rows.retain(|key, (_, row, _)| {
+                rows.retain(|key, row| {
                     let keep = unique.contains_next(key);
                     if !keep {
-                        #[cfg(feature = "islands")]
-                        delivery::dispose_tree(&row.root);
-                        row.root.remove();
+                        remove_tree(&row.scope.root);
                     }
                     keep
                 });
@@ -159,39 +132,93 @@ impl Scope {
                     rows.append(&mut staged);
                 }
                 let ordered: Vec<_> = keys.iter().map(|key| &rows[key]).collect();
-                let positions: Vec<_> = ordered.iter().map(|row| row.2.get()).collect();
+                let positions: Vec<_> = ordered.iter().map(|row| row.position.get()).collect();
                 let stationary = reconcile::stationary(&positions);
-                for (index, ((state, _, position), item)) in ordered.iter().zip(items).enumerate() {
-                    state.set(item);
-                    position.set(index);
+                for (index, (row, item)) in ordered.iter().zip(items).enumerate() {
+                    row.state.set(item);
+                    row.position.set(index);
                 }
-                let mut anchor: Option<&web_sys::Node> = None;
-                for ((_, row, _), keep) in ordered.iter().zip(stationary).rev() {
+                let mut anchor: Option<&Node> = None;
+                for (row, keep) in ordered.iter().zip(stationary).rev() {
                     if !keep {
-                        container.insert_before(&row.root, anchor)?;
+                        container.insert_before(&row.scope.root, anchor)?;
                     }
-                    anchor = Some(row.root.as_ref());
+                    anchor = Some(row.scope.root.as_ref());
                 }
-                for (_, row, _) in rows.values() {
-                    row.commit();
+                for row in rows.values() {
+                    row.scope.commit();
                 }
-                // insertBefore can blur a node even when moving it within the
-                // same list. Restore focus only if that original node survives.
-                if let Some(focused) = focused.filter(|node| container.contains(Some(node))) {
-                    if !document
-                        .active_element()
-                        .is_some_and(|node| node.is_same_node(Some(&focused)))
-                    {
-                        focused.focus()?;
-                        if let (Some(input), Some((start, end, direction))) =
-                            (focused.dyn_ref::<HtmlInputElement>(), selection)
-                        {
-                            input.set_selection_range_with_direction(start, end, &direction)?;
-                        }
-                    }
-                }
-                Ok(())
+                restore_focus(&document, &container, focused)
             })
         })
     }
+}
+
+/// Adopt the server-rendered rows, which must match `keys` in order.
+fn server_rows<K>(
+    container: &Element,
+    keys: &[K],
+    encode: &EncodeKey<K>,
+) -> Result<Vec<Element>, JsValue> {
+    let mut node = container.first_element_child();
+    let mut rows = Vec::with_capacity(keys.len());
+    for key in keys {
+        let row = node
+            .take()
+            .ok_or_else(|| JsValue::from_str("missing native row"))?;
+        if strings::attribute(&row, strings::Name::Key).as_deref() != Some(encode(key)?.as_str()) {
+            return Err(JsValue::from_str("native row key mismatch"));
+        }
+        node = row.next_element_sibling();
+        rows.push(row);
+    }
+    if node.is_some() {
+        return Err(JsValue::from_str("unexpected native row"));
+    }
+    Ok(rows)
+}
+
+type Selection = (u32, u32, String);
+
+/// The focused descendant of `container` and, for an input, its selection.
+fn focused(document: &Document, container: &Element) -> Option<(HtmlElement, Option<Selection>)> {
+    let focused = document
+        .active_element()
+        .filter(|node| container.contains(Some(node)))?
+        .dyn_into::<HtmlElement>()
+        .ok()?;
+    let selection = focused.dyn_ref::<HtmlInputElement>().and_then(|input| {
+        Some((
+            input.selection_start().ok()??,
+            input.selection_end().ok()??,
+            input.selection_direction().ok()??,
+        ))
+    });
+    Some((focused, selection))
+}
+
+// insertBefore can blur a node even when moving it within the same list.
+// Restore focus only if that original node survives.
+fn restore_focus(
+    document: &Document,
+    container: &Element,
+    focused: Option<(HtmlElement, Option<Selection>)>,
+) -> Result<(), JsValue> {
+    let Some((focused, selection)) = focused.filter(|(node, _)| container.contains(Some(node)))
+    else {
+        return Ok(());
+    };
+    if document
+        .active_element()
+        .is_some_and(|node| node.is_same_node(Some(&focused)))
+    {
+        return Ok(());
+    }
+    focused.focus()?;
+    if let (Some(input), Some((start, end, direction))) =
+        (focused.dyn_ref::<HtmlInputElement>(), selection)
+    {
+        input.set_selection_range_with_direction(start, end, &direction)?;
+    }
+    Ok(())
 }

@@ -1,12 +1,89 @@
 use super::{Frame, SlotId, Structure, allowed, error, visit};
-use crate::dom::{Children, Component, MountPoint, Scope};
+use crate::dom::{Children, MountPoint, Scope, TemplateComponent};
 use crate::{OwnerHandle, Signal, signal, versions::Versions};
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeMap,
+    rc::Rc,
+};
 use wasm_bindgen::JsValue;
 use web_sys::Element;
 
+/// What a structural slot has published, and the candidate that the attempt
+/// with `epoch` prepared. A newer attempt drops an older candidate first.
+struct EpochSlot<V> {
+    epoch: Cell<Option<u64>>,
+    current: RefCell<V>,
+    candidate: RefCell<V>,
+}
+
+impl<V: Default> Default for EpochSlot<V> {
+    fn default() -> Self {
+        Self {
+            epoch: Cell::new(None),
+            current: RefCell::default(),
+            candidate: RefCell::default(),
+        }
+    }
+}
+
+impl<V: Default> EpochSlot<V> {
+    fn begin(&self, epoch: u64) {
+        if self.epoch.replace(Some(epoch)) != Some(epoch) {
+            drop(self.candidate.take());
+        }
+    }
+
+    fn propose(&self, next: V) {
+        drop(self.candidate.replace(next));
+    }
+
+    /// Publish `next`. The caller decides when the previous value drops.
+    fn publish(&self, next: V) -> V {
+        let old = self.current.replace(next);
+        drop(self.candidate.take());
+        old
+    }
+}
+
+impl<T: Clone> EpochSlot<Option<T>> {
+    /// The published or proposed instance that `matches`, for reuse.
+    fn find(&self, matches: impl Fn(&T) -> bool) -> Option<T> {
+        [&self.current, &self.candidate]
+            .into_iter()
+            .find_map(|cell| {
+                cell.borrow()
+                    .as_ref()
+                    .filter(|value| matches(value))
+                    .cloned()
+            })
+    }
+}
+
 impl Frame<'_> {
-    pub fn component_at<C: Component, K: PartialEq + 'static>(
+    /// The typed state of `id`, created on first use.
+    fn slot<S: Default + 'static>(&self, id: SlotId, changed: &str) -> Result<Rc<S>, String> {
+        let state = self
+            .tree
+            .slots
+            .borrow_mut()
+            .entry(id)
+            .or_insert_with(|| Rc::new(S::default()))
+            .clone();
+        state.downcast::<S>().map_err(|_| changed.into())
+    }
+
+    /// Validate a range and keep its anchors inside this component.
+    fn range(&mut self, target: &MountPoint) -> Result<(), String> {
+        target.validate().map_err(error)?;
+        self.target(&target.start);
+        self.target(&target.end);
+        Ok(())
+    }
+}
+
+impl Frame<'_> {
+    pub fn component_at<C: TemplateComponent, K: PartialEq + 'static>(
         &mut self,
         slot: usize,
         target: &MountPoint,
@@ -14,46 +91,14 @@ impl Frame<'_> {
         make: impl FnOnce(OwnerHandle) -> Result<C, JsValue>,
         children: Children,
     ) -> Result<(), String> {
-        target.validate().map_err(error)?;
-        for anchor in [&target.start, &target.end] {
-            self.publication
-                .targets
-                .push((self.tree.clone(), anchor.clone()));
-        }
-        let state = {
-            let mut slots = self.tree.slots.borrow_mut();
-            slots
-                .entry(SlotId::Component(slot))
-                .or_insert_with(|| Rc::new(ChildSlot::<Rc<K>>::default()))
-                .clone()
-        }
-        .downcast::<ChildSlot<Rc<K>>>()
-        .map_err(|_| "coherent child key type changed")?;
-        let retired =
-            if state.epoch.replace(Some(self.attempt.epoch())) != Some(self.attempt.epoch()) {
-                state.candidate.take()
-            } else {
-                None
-            };
-        drop(retired);
+        self.range(target)?;
+        let state: Rc<ChildSlot<Rc<K>>> =
+            self.slot(SlotId::Component(slot), "coherent child key type changed")?;
+        state.begin(self.attempt.epoch());
         let next = match key.map(Rc::new) {
             None => None,
             Some(key) => {
-                let existing = state
-                    .current
-                    .borrow()
-                    .as_ref()
-                    .filter(|(old, _)| old == &key)
-                    .cloned()
-                    .or_else(|| {
-                        state
-                            .candidate
-                            .borrow()
-                            .as_ref()
-                            .filter(|(old, _)| old == &key)
-                            .cloned()
-                    });
-                let instance = match existing {
+                let instance = match state.find(|(old, _)| old == &key) {
                     Some((_, instance)) => instance,
                     None => {
                         let scope = children
@@ -73,8 +118,7 @@ impl Frame<'_> {
                 Some((key, instance))
             }
         };
-        let old = state.candidate.replace(next.clone());
-        drop(old);
+        state.propose(next.clone());
         self.publication.structures.push(Box::new(ChildPlan {
             target: target.clone(),
             state,
@@ -84,20 +128,7 @@ impl Frame<'_> {
     }
 }
 
-struct ChildSlot<K> {
-    epoch: std::cell::Cell<Option<u64>>,
-    current: RefCell<Option<(K, Rc<Scope>)>>,
-    candidate: RefCell<Option<(K, Rc<Scope>)>>,
-}
-impl<K> Default for ChildSlot<K> {
-    fn default() -> Self {
-        Self {
-            epoch: std::cell::Cell::new(None),
-            current: RefCell::new(None),
-            candidate: RefCell::new(None),
-        }
-    }
-}
+type ChildSlot<K> = EpochSlot<Option<(K, Rc<Scope>)>>;
 struct ChildPlan<K> {
     target: MountPoint,
     state: Rc<ChildSlot<K>>,
@@ -117,20 +148,8 @@ impl<K: Clone + 'static> Structure for ChildPlan<K> {
     }
     fn apply(&self) -> Result<(), String> {
         let next = self.next.as_ref().map(|(_, scope)| scope.root());
-        if let Some(next) = next {
-            let parent = self
-                .target
-                .end
-                .parent_node()
-                .ok_or("detached component anchor")?;
-            if !next
-                .next_sibling()
-                .is_some_and(|node| node.is_same_node(Some(&self.target.end)))
-            {
-                parent
-                    .insert_before(next, Some(&self.target.end))
-                    .map_err(error)?;
-            }
+        if let Some(next) = next.filter(|next| !self.target.precedes_end(next)) {
+            self.target.append(next).map_err(error)?;
         }
         if let Some((_, old)) = self.state.current.borrow().as_ref() {
             if next.is_none_or(|next| !next.is_same_node(Some(old.root()))) {
@@ -140,8 +159,7 @@ impl<K: Clone + 'static> Structure for ChildPlan<K> {
         Ok(())
     }
     fn finish(self: Box<Self>) {
-        let old = self.state.current.replace(self.next.clone());
-        self.state.candidate.take();
+        let old = self.state.publish(self.next.clone());
         if let Some((_, scope)) = &self.next {
             scope.commit();
         }
@@ -156,12 +174,7 @@ impl Frame<'_> {
         target: &MountPoint,
         children: &Children,
     ) -> Result<(), String> {
-        target.validate().map_err(error)?;
-        for anchor in [&target.start, &target.end] {
-            self.publication
-                .targets
-                .push((self.tree.clone(), anchor.clone()));
-        }
+        self.range(target)?;
         let existing = self
             .tree
             .slots
@@ -218,11 +231,7 @@ impl Structure for ChildrenPlan {
             .fragment
             .as_ref()
             .ok_or("missing children range")?;
-        if !fragment
-            .end
-            .next_sibling()
-            .is_some_and(|node| node.is_same_node(Some(&self.target.end)))
-        {
+        if !self.target.precedes_end(&fragment.end) {
             self.scope.attach_fragment(&self.target).map_err(error)?;
         }
         Ok(())
@@ -241,41 +250,12 @@ impl Frame<'_> {
         read: impl FnOnce() -> (usize, T),
         prepare: impl FnOnce(usize, Signal<T>, &OwnerHandle) -> Result<Scope, JsValue>,
     ) -> Result<(), String> {
-        target.validate().map_err(error)?;
-        for anchor in [&target.start, &target.end] {
-            self.publication
-                .targets
-                .push((self.tree.clone(), anchor.clone()));
-        }
+        self.range(target)?;
         let ((key, data), inputs) = Versions::capture(read);
-        let state = {
-            let mut slots = self.tree.slots.borrow_mut();
-            slots
-                .entry(SlotId::Branch(slot))
-                .or_insert_with(|| Rc::new(BranchSlot::<T>::default()))
-                .clone()
-        }
-        .downcast::<BranchSlot<T>>()
-        .map_err(|_| "coherent branch capture type changed")?;
-        if state.epoch.replace(Some(self.attempt.epoch())) != Some(self.attempt.epoch()) {
-            let retired = state.candidate.take();
-            drop(retired);
-        }
-        let existing = state
-            .current
-            .borrow()
-            .as_ref()
-            .filter(|(old, _, _)| *old == key)
-            .cloned()
-            .or_else(|| {
-                state
-                    .candidate
-                    .borrow()
-                    .as_ref()
-                    .filter(|(old, _, _)| *old == key)
-                    .cloned()
-            });
-        let (value, scope) = match existing {
+        let state: Rc<BranchSlot<T>> =
+            self.slot(SlotId::Branch(slot), "coherent branch capture type changed")?;
+        state.begin(self.attempt.epoch());
+        let (value, scope) = match state.find(|(old, _, _)| *old == key) {
             Some((_, value, scope)) => (value, scope),
             None => {
                 let value = signal(data.clone());
@@ -295,8 +275,7 @@ impl Frame<'_> {
             )
         })?;
         let next = (key, value, scope);
-        let old = state.candidate.replace(Some(next.clone()));
-        drop(old);
+        state.propose(Some(next.clone()));
         self.publication.structures.push(Box::new(BranchPlan {
             target: target.clone(),
             state,
@@ -308,20 +287,7 @@ impl Frame<'_> {
 }
 
 type BranchInstance<T> = (usize, Signal<T>, Rc<Scope>);
-struct BranchSlot<T> {
-    epoch: std::cell::Cell<Option<u64>>,
-    current: RefCell<Option<BranchInstance<T>>>,
-    candidate: RefCell<Option<BranchInstance<T>>>,
-}
-impl<T> Default for BranchSlot<T> {
-    fn default() -> Self {
-        Self {
-            epoch: std::cell::Cell::new(None),
-            current: RefCell::new(None),
-            candidate: RefCell::new(None),
-        }
-    }
-}
+type BranchSlot<T> = EpochSlot<Option<BranchInstance<T>>>;
 struct BranchPlan<T> {
     target: MountPoint,
     state: Rc<BranchSlot<T>>,
@@ -343,11 +309,7 @@ impl<T: Clone + PartialEq + 'static> Structure for BranchPlan<T> {
             .fragment
             .as_ref()
             .ok_or("missing branch range")?;
-        if !fragment
-            .end
-            .next_sibling()
-            .is_some_and(|node| node.is_same_node(Some(&self.target.end)))
-        {
+        if !self.target.precedes_end(&fragment.end) {
             self.next.2.attach_fragment(&self.target).map_err(error)?;
         }
         if let Some((_, _, old)) = self.state.current.borrow().as_ref() {
@@ -361,8 +323,7 @@ impl<T: Clone + PartialEq + 'static> Structure for BranchPlan<T> {
         Ok(())
     }
     fn finish(self: Box<Self>) {
-        let old = self.state.current.replace(Some(self.next.clone()));
-        self.state.candidate.take();
+        let old = self.state.publish(Some(self.next.clone()));
         self.next.1.set((*self.data).clone());
         drop(old);
         self.next.2.commit();
@@ -388,22 +349,9 @@ impl Frame<'_> {
         if keys.iter().collect::<std::collections::BTreeSet<_>>().len() != keys.len() {
             return Err("duplicate key in coherent list".into());
         }
-        let state = {
-            let mut slots = self.tree.slots.borrow_mut();
-            slots
-                .entry(SlotId::List(slot))
-                .or_insert_with(|| Rc::new(ListSlot::<K, T>::default()))
-                .clone()
-        }
-        .downcast::<ListSlot<K, T>>()
-        .map_err(|_| "coherent list item/key type changed")?;
-        let retired =
-            if state.epoch.replace(Some(self.attempt.epoch())) != Some(self.attempt.epoch()) {
-                state.candidate.take()
-            } else {
-                BTreeMap::new()
-            };
-        drop(retired);
+        let state: Rc<ListSlot<K, T>> =
+            self.slot(SlotId::List(slot), "coherent list item/key type changed")?;
+        state.begin(self.attempt.epoch());
         let mut next = BTreeMap::new();
         let mut updates = Vec::new();
         for (key, item) in keys.iter().zip(items) {
@@ -435,8 +383,7 @@ impl Frame<'_> {
             updates.push((value.clone(), item));
             next.insert(key.clone(), (value, scope));
         }
-        let old = state.candidate.replace(next.clone());
-        drop(old);
+        state.propose(next.clone());
         let remove = state
             .current
             .borrow()
@@ -458,20 +405,7 @@ impl Frame<'_> {
 }
 
 type Rows<K, T> = BTreeMap<K, (Signal<T>, Rc<Scope>)>;
-struct ListSlot<K, T> {
-    epoch: std::cell::Cell<Option<u64>>,
-    current: RefCell<Rows<K, T>>,
-    candidate: RefCell<Rows<K, T>>,
-}
-impl<K, T> Default for ListSlot<K, T> {
-    fn default() -> Self {
-        Self {
-            epoch: std::cell::Cell::new(None),
-            current: RefCell::new(BTreeMap::new()),
-            candidate: RefCell::new(BTreeMap::new()),
-        }
-    }
-}
+type ListSlot<K, T> = EpochSlot<Rows<K, T>>;
 struct ListPlan<K, T> {
     container: Element,
     state: Rc<ListSlot<K, T>>,
@@ -506,8 +440,7 @@ impl<K: Ord + Clone + 'static, T: Clone + PartialEq + 'static> Structure for Lis
         Ok(())
     }
     fn finish(self: Box<Self>) {
-        let old = self.state.current.replace(self.next.clone());
-        self.state.candidate.take();
+        let old = self.state.publish(self.next.clone());
         // Rust publications and lifecycle callbacks occur after every DOM patch.
         for (value, item) in self.updates {
             value.set((*item).clone());

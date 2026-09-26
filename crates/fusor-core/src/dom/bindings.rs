@@ -1,8 +1,7 @@
 use super::{ElementTarget, InputTarget, JsValue, Listener, Scope, strings, text_value};
-use crate::{Signal, batch, effect};
+use crate::{Effect, Signal, effect};
 use std::{cell::RefCell, rc::Rc};
-use wasm_bindgen::closure::Closure;
-use web_sys::{Event, EventTarget, Text};
+use web_sys::{Event, Text};
 
 impl Scope {
     pub(super) fn bind(
@@ -44,18 +43,10 @@ impl Scope {
             }
             first = false;
         };
-        let binding = if deferred {
-            let binding = crate::reactive::prepared_effect(callback);
-            let initialize = binding.initializer();
-            let errors = first_error.clone();
-            self.before_commit(move || {
-                initialize();
-                errors.take().map_or(Ok(()), Err)
-            })?;
-            binding
-        } else {
-            effect(callback)
-        };
+        let errors = first_error.clone();
+        let binding = self.install_effect(deferred, callback, move || {
+            errors.take().map_or(Ok(()), Err)
+        })?;
         if let Some(error) = first_error.take() {
             return Err(error);
         }
@@ -76,19 +67,29 @@ impl Scope {
                 update();
             }
         };
-        let binding = if self.hydrating {
-            let binding = crate::reactive::prepared_effect(callback);
-            let initialize = binding.initializer();
-            self.before_commit(move || {
-                initialize();
-                Ok(())
-            })?;
-            binding
-        } else {
-            effect(callback)
-        };
+        let binding = self.install_effect(self.hydrating, callback, || Ok(()))?;
         self.effects.push(binding);
         Ok(())
+    }
+
+    /// Run `callback` now, or defer its first run to commit, which then
+    /// reports `initialized`.
+    fn install_effect(
+        &mut self,
+        deferred: bool,
+        callback: impl FnMut() + 'static,
+        initialized: impl FnOnce() -> Result<(), JsValue> + 'static,
+    ) -> Result<Effect, JsValue> {
+        if !deferred {
+            return Ok(effect(callback));
+        }
+        let binding = crate::reactive::prepared_effect(callback);
+        let initialize = binding.initializer();
+        self.before_commit(move || {
+            initialize();
+            initialized()
+        })?;
+        Ok(binding)
     }
 
     /// Replace a text leaf's content reactively. Values are text, never HTML.
@@ -123,10 +124,7 @@ impl Scope {
         read: impl Fn() -> String + 'static,
     ) -> Result<(), JsValue> {
         let text = text.clone();
-        self.bind_dom_infallible(move || {
-            let value = read();
-            strings::set_text_if_changed(&text, &value);
-        })
+        self.bind_dom_infallible(move || strings::set_text_if_changed(&text, &read()))
     }
 
     #[doc(hidden)]
@@ -181,21 +179,10 @@ impl Scope {
         event: &str,
         handler: impl FnMut(Event) + 'static,
     ) -> Result<(), JsValue> {
-        let target: EventTarget = target.resolve(self)?.into();
+        let target = target.resolve(self)?.into();
         let owner = self.owner();
-        let handler = RefCell::new(handler);
-        let callback = Closure::wrap(Box::new(move |event| {
-            if owner.is_active() {
-                batch(|| (handler.borrow_mut())(event));
-            }
-        }) as Box<dyn Fn(Event)>);
-        let event = strings::event(event);
-        strings::add(&target, &event, callback.as_ref())?;
-        self.listeners.push(Listener {
-            target,
-            event,
-            callback,
-        });
+        let listener = Listener::new(target, event, move || owner.is_active(), handler)?;
+        self.listeners.push(listener);
         Ok(())
     }
 
@@ -209,13 +196,7 @@ impl Scope {
         let source = value.clone();
         let target = input.clone();
         self.on(&input, "input", move |_| source.set(target.value()))?;
-        self.bind_dom(move || {
-            let next = value.get();
-            if input.value() != next {
-                input.set_value(&next);
-            }
-            Ok(())
-        })
+        self.value(&input, move || value.get())
     }
 
     pub fn checked(

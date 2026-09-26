@@ -101,7 +101,7 @@ Then run the browser suites for the area you changed:
 | Components, lists, children | `just test-browser`, `just test foreach`, `just test children`, `just test component-tags` |
 | Conditions, async, coherent views | `just test control-flow`, `just test async-components`, `just test coherent` |
 | Routing | `just test router`, `just test navigation` |
-| Islands | `just test islands`, `just test delivery` |
+| Islands | `just test islands`, `just test delivery`, `just test component-hydration` |
 | JavaScript modules and npm | `just test javascript`, `just test javascript-build`, `just test javascript-dev`, `just test integrations` |
 | The CLI or the dev server | `just test dev`, `just test standalone` |
 | The docs, landing page or benchmark site | `just test docs`, `just test docs-examples`, `just test-landing`, `just test benchmarks` |
