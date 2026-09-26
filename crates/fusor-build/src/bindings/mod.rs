@@ -1,16 +1,18 @@
 //! Lower HTML bindings to a typed plan, then emit ordinary Rust.
-mod application;
 mod async_tags;
 mod codegen;
 mod control;
+mod emit;
 mod foreach;
 mod hydration;
 mod interpolation;
 mod ir;
 mod lexical;
+mod markup;
 mod parse;
 mod router_tags;
 mod server;
+mod tag_input;
 mod tags;
 mod tokens;
 
@@ -37,13 +39,13 @@ pub(crate) fn compile(
     let app = plan
         .components
         .iter()
-        .find_map(|component| component.app.as_ref().map(|app| app.offset));
-    let mut fingerprint = rust.clone();
+        .find_map(|component| component.app().map(|_| component.range.start));
+    let locations = codegen::generate(source, &plan.components, rust);
     // Static delivery templates belong to the immutable unit protocol. Ordinary
-    // app refresh compares executable native bindings, generated from the same
-    // IR without delivery literals, rather than parsing those literals back out.
-    codegen::generate(source, &plan.components, &mut fingerprint, false);
-    let locations = codegen::generate(source, &plan.components, rust, true);
+    // app refresh compares the executable bindings, which precede them.
+    let fingerprint = rust.clone();
+    rust.push_str(&codegen::delivery(&plan.components).to_string());
+    rust.push('\n');
     Ok(Compiled {
         javascript: plan
             .components

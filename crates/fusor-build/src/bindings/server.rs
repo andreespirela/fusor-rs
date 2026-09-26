@@ -1,30 +1,11 @@
 //! Native lowering walks a structural HTML token stream. Dynamic Rust remains
 //! native token trees with the same source spans as the browser target.
 use super::{ir::*, tokens::Rust};
-use fusor::template::{self, ElementId, MountMarker, RootKind, TextId, TextMarker};
-use html5gum::{DefaultEmitter, Token, Tokenizer};
+use fusor::template::{self, ElementId, MountId, MountMarker, RootKind, TextId, TextMarker};
+use html5gum::{EndTag, HtmlString, Spanned, StartTag, Token};
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use sha2::{Digest, Sha256};
-
-// Passed immediately to the escaped writer, so borrowed formatting arguments
-// do not escape their source expression's statement.
-fn string(value: &InterpolatedString) -> TokenStream {
-    let mut format = String::new();
-    let mut expressions = Vec::new();
-    for part in &value.0 {
-        match part {
-            StringPart::Literal(text) => {
-                format.push_str(&text.replace('{', "{{").replace('}', "}}"));
-            }
-            StringPart::Expression(expression) => {
-                format.push_str("{}");
-                expressions.push(expression);
-            }
-        }
-    }
-    quote! { ::std::format_args!(#format #(, (#expressions))*) }
-}
 
 pub(super) fn hash(component: &Component, components: &[Component]) -> String {
     let mut hash = Sha256::new();
@@ -33,61 +14,21 @@ pub(super) fn hash(component: &Component, components: &[Component]) -> String {
         hash.update(fragment.tokens.to_string());
         hash.update([0]);
     }
-    fn descendants(bindings: &[Binding], components: &[Component], digest: &mut Sha256) {
-        for binding in bindings {
-            match binding {
-                Binding::Invocation {
-                    children: Some(index),
-                    ..
-                } => digest.update(self::hash(&components[*index], components)),
-                Binding::Router { routes, .. } => {
-                    for route in routes {
-                        digest.update(route.path.as_deref().unwrap_or("<fallback>").as_bytes());
-                        digest.update([0]);
-                        if let Some(alias) = &route.params {
-                            digest.update(alias.tokens.to_string());
-                        }
-                        digest.update(self::hash(&components[route.body], components));
-                    }
+    for binding in Binding::walk(&component.bindings) {
+        if let Binding::Router { routes, .. } = binding {
+            for route in routes {
+                hash.update(route.path.as_deref().unwrap_or("<fallback>").as_bytes());
+                hash.update([0]);
+                if let Some(alias) = &route.params {
+                    hash.update(alias.tokens.to_string());
                 }
-                Binding::Branch { cases, .. } => {
-                    for case in cases {
-                        digest.update(self::hash(&components[case.body], components));
-                    }
-                }
-                Binding::ForEach { body, .. } => {
-                    digest.update(self::hash(&components[*body], components))
-                }
-                Binding::Region { bindings, .. } => descendants(bindings, components, digest),
-                _ => {}
             }
         }
+        for child in binding.components() {
+            hash.update(self::hash(&components[child], components));
+        }
     }
-    descendants(&component.bindings, components, &mut hash);
     format!("{:x}", hash.finalize())
-}
-
-fn node(binding: &Binding) -> Option<ElementId> {
-    match binding {
-        Binding::Text { .. }
-        | Binding::Invocation { .. }
-        | Binding::Children { .. }
-        | Binding::Router { .. }
-        | Binding::Branch { .. } => None,
-        Binding::ForEach { node, .. }
-        | Binding::Island { node, .. }
-        | Binding::Region { node, .. }
-        | Binding::Attribute { node, .. }
-        | Binding::Property { node, .. }
-        | Binding::Boolean { node, .. }
-        | Binding::Value { node, .. }
-        | Binding::Checked { node, .. }
-        | Binding::Class { node, .. }
-        | Binding::Event { node, .. }
-        | Binding::Input { node, .. }
-        | Binding::Field { node, .. }
-        | Binding::Slot { node, .. } => Some(*node),
-    }
 }
 
 fn construct_child(
@@ -97,26 +38,20 @@ fn construct_child(
     components: &[Component],
     into: bool,
 ) -> TokenStream {
-    let fields = inputs.iter().map(|input| {
-        let name = &input.name;
-        let InputValue::Expression(value) = &input.value else {
-            unreachable!("server projected content rejected by parser")
-        };
-        quote_spanned! {name.span()=> #name: { #value } }
-    });
+    let fields = super::emit::fields(inputs, super::emit::braced);
     let body = children
         .filter(|index| !components[*index].empty)
         .map(|index| component_body(&components[index], components, false));
-    let content = body.map(|body| quote! { Some(&(|__rf_context: &mut ::fusor_server::Context<'_>| { #body }) as &::fusor_server::Children<'_>) }).unwrap_or_else(|| quote! { None });
+    let content = super::emit::option(body.map(|body| quote! { &(|__fusor_context: &mut ::fusor_server::Context<'_>| { #body }) as &::fusor_server::Children<'_> }));
     let method = if into {
         quote! { try_child_into_with_children }
     } else {
         quote! { try_child_with_children }
     };
-    let writer = into.then(|| quote! { , __rf_writer });
-    quote_spanned! {ty.span()=> __rf_context.#method(|owner| {
-        type __FusorInputs = <#ty as ::fusor::dom::FromInputs>::Inputs;
-        <#ty as ::fusor::dom::FromInputs>::from_inputs(__FusorInputs { #(#fields),* }, owner)
+    let writer = into.then(|| quote! { , __fusor_writer });
+    let construct = super::emit::from_inputs(ty.span(), ty, fields);
+    quote_spanned! {ty.span()=> __fusor_context.#method(|owner| {
+        #construct
             .map_err(|_| ::std::string::String::from(concat!("component ", stringify!(#ty), " input construction failed")))
     }, #content #writer) }
 }
@@ -148,13 +83,11 @@ impl Emission {
             return;
         }
         let markup = std::mem::take(&mut self.markup);
-        let first_open = match self.first_open.take() {
-            Some(offset) => quote! { ::std::option::Option::Some(#offset) },
-            None => quote! { ::std::option::Option::None },
-        };
+        let first_open =
+            super::emit::option(self.first_open.take().map(|offset| quote! { #offset }));
         let editable = std::mem::take(&mut self.editable);
         self.statements.push(quote! {
-            __rf_writer.static_markup(#markup, #first_open, #editable);
+            __fusor_writer.static_markup(#markup, #first_open, #editable);
         });
     }
 
@@ -172,309 +105,453 @@ impl Emission {
 }
 
 fn component_body(component: &Component, components: &[Component], into: bool) -> TokenStream {
-    if component.inline
-        && component.elements.is_empty()
-        && component.texts.is_empty()
-        && component.text_elements.is_empty()
-    {
-        if let [
-            Binding::Invocation {
-                ty,
-                inputs,
-                children,
-                condition: None,
-                key: None,
-                ..
-            },
-        ] = component.bindings.as_slice()
-        {
-            return construct_child(ty, inputs, *children, components, into);
-        }
+    if let Some(child) = forwarding_child(component, components, into) {
+        return child;
     }
-    let mut emitter = DefaultEmitter::<usize>::new_with_span();
-    emitter.naively_switch_states(true);
-    let mut body = Emission::default();
-    if component.fragment {
-        body.literal("<!--rf:fragment-->");
+    let mut render = ServerRender {
+        component,
+        components,
+        body: Emission::default(),
+        depth: 0,
+        raw: false,
+        first: true,
+    };
+    if component.fragment() {
+        render.body.literal("<!--fusor:fragment-->");
     }
-    let mut depth = 0;
-    let mut raw = false;
-    let mut first = true;
-    for token in Tokenizer::new_with_emitter(component.html.as_str(), emitter) {
-        match token.expect("compiled HTML") {
-            Token::StartTag(tag) => {
-                let name = String::from_utf8_lossy(&tag.name).into_owned();
-                if name == "template" && depth == 0 && component.kind == RootKind::Template {
-                    depth += 1;
-                    continue;
-                }
-                let id = tag
-                    .attributes
-                    .get(template::ELEMENT_ATTRIBUTE.as_bytes())
-                    .and_then(|id| String::from_utf8_lossy(id).parse::<ElementId>().ok());
-                let bindings: Vec<_> = component
-                    .bindings
-                    .iter()
-                    .filter(|binding| id.is_some() && node(binding) == id)
-                    .collect();
-                let island = bindings
-                    .iter()
-                    .find(|binding| matches!(binding, Binding::Island { .. }));
-                if let Some(Binding::Island {
-                    descriptor,
-                    props,
-                    activation,
-                    prefetch,
-                    ..
-                }) = island
-                {
-                    let span = descriptor.span();
-                    let activation = syn::Ident::new(&title(activation), span);
-                    let prefetch = syn::Ident::new(&title(prefetch), span);
-                    let id = if let Some(Binding::Attribute { value, .. }) = bindings.iter().find(|binding| matches!(binding, Binding::Attribute { name, .. } if name == "id")) {
-                        let value = super::codegen::string(value); quote! { ::std::option::Option::Some(#value) }
-                    } else if let Some(value) = tag.attributes.get(b"id".as_slice()) {
-                        let value = String::from_utf8_lossy(value).into_owned(); quote! { ::std::option::Option::Some(::std::string::String::from(#value)) }
-                    } else { quote! { ::std::option::Option::<::std::string::String>::None } };
-                    body.push(quote_spanned! {span=>
-                        let __rf_island_id = #id;
-                        let __rf_island = __rf_context.prepare_island::<#descriptor>(__rf_island_id.as_deref(), &{ #props }, ::fusor_islands::Activation::#activation, ::fusor_islands::Prefetch::#prefetch)?;
-                    });
-                }
-                let sensitive = name == "input"
-                    && tag.attributes.get(b"type".as_slice()).is_some_and(|value| {
-                        matches!(
-                            String::from_utf8_lossy(value).to_ascii_lowercase().as_str(),
-                            "password" | "file"
-                        )
-                    });
-                body.open(&name);
-                let mut static_attributes = String::new();
-                let mut editable = false;
-                for (key, value) in &tag.attributes {
-                    let key = String::from_utf8_lossy(key).into_owned();
-                    let value = String::from_utf8_lossy(value).into_owned();
-                    if sensitive && key == "value"
-                        || island.is_some() && key == "id"
-                        || key == "class"
-                            && bindings
-                                .iter()
-                                .any(|binding| matches!(binding, Binding::Class { .. }))
-                    {
-                        continue;
-                    }
-                    editable |= static_attribute(&mut static_attributes, &key, &value);
-                }
-                if first && component.kind == RootKind::Template && !component.fragment {
-                    let id = component.id.to_string();
-                    let version = template::VERSION.to_string();
-                    static_attribute(&mut static_attributes, "data-rf-component", &id);
-                    static_attribute(&mut static_attributes, "data-rf-version", &version);
-                }
-                body.literal(&static_attributes);
-                body.editable |= editable;
-                first = false;
-                let mut content = Vec::new();
-                if let Some(slot) = tag
-                    .attributes
-                    .get(template::TEXT_ELEMENT_ATTRIBUTE.as_bytes())
-                    .and_then(|id| String::from_utf8_lossy(id).parse::<TextId>().ok())
-                {
-                    if let Some(Binding::Text { value, .. }) = component.bindings.iter().find(
-                        |binding| matches!(binding, Binding::Text { slot: text, .. } if *text == slot),
-                    ) {
-                        content.push(quote_spanned! {value.span()=> __rf_writer.text(&(#value)); });
-                    }
-                }
-                for binding in &bindings {
-                    let span = binding.fragments()[0].span();
-                    let operation = match binding {
-                        Binding::Attribute { name, value, .. }
-                            if island.is_none() || name != "id" =>
-                        {
-                            let value = string(value);
-                            quote_spanned! {span=> __rf_writer.attr(#name, #value); }
-                        }
-                        Binding::Boolean { name, value, .. } => {
-                            quote_spanned! {span=> __rf_writer.boolean(#name, { #value }); }
-                        }
-                        Binding::Checked { value, .. } => {
-                            quote_spanned! {span=> __rf_writer.boolean("checked", { #value }); }
-                        }
-                        Binding::Value { value, .. } if !sensitive => {
-                            let value = string(value);
-                            quote_spanned! {span=> __rf_writer.attr("value", #value); }
-                        }
-                        Binding::Input {
-                            kind: InputKind::Value,
-                            value,
-                            ..
-                        } if !sensitive => {
-                            quote_spanned! {span=> __rf_writer.attr("value", (#value).get()); }
-                        }
-                        Binding::Input {
-                            kind: InputKind::Checked,
-                            value,
-                            ..
-                        } => {
-                            quote_spanned! {span=> __rf_writer.boolean("checked", (#value).get()); }
-                        }
-                        Binding::Field { value, .. } if !sensitive => {
-                            if name == "textarea" {
-                                content.push(
-                                    quote_spanned! {span=> __rf_writer.text((#value).raw()); },
-                                );
-                                quote! {}
-                            } else {
-                                quote_spanned! {span=> __rf_writer.attr("value", (#value).raw()); }
-                            }
-                        }
-                        Binding::ForEach {
-                            items,
-                            key,
-                            body: row,
-                            ..
-                        } => {
-                            let row_constructor = if components[*row].item_only_row {
-                                quote! { ::fusor_components::ForEach::server_item_row }
-                            } else {
-                                quote! { ::fusor_components::ForEach::server_row }
-                            };
-                            let row = component_body(&components[*row], components, true);
-                            content.push(quote_spanned! {span=> {
-                                let __rf_items = ::fusor_components::ForEach::entries({ #items });
-                                let mut __rf_keys = ::std::collections::BTreeSet::new();
-                                for __rf_entry in __rf_items {
-                                    let __rf_key = ::fusor_components::ForEach::key(&__rf_entry, #key);
-                                    if !__rf_keys.insert(__rf_key.clone()) { return ::std::result::Result::Err("duplicate key in ForEach".into()); }
-                                    __rf_writer.keyed_child(&__rf_key, |mut __rf_writer| {
-                                        let state = #row_constructor(state, __rf_entry);
-                                        let state = &state;
-                                        #row
-                                    })?;
-                                }
-                            }});
-                            quote! {}
-                        }
-                        Binding::Island { .. } => {
-                            // The same lowering serves owned root Writers and
-                            // borrowed nested Writers; the latter reborrow is
-                            // intentional. Scope the lint to framework calls.
-                            content.push(
-                                quote_spanned! {span=> #[allow(clippy::needless_borrow)] __rf_island.contents(&mut __rf_writer); },
-                            );
-                            quote! { #[allow(clippy::needless_borrow)] __rf_island.attributes(&mut __rf_writer); }
-                        }
-                        // Guarded values omit sensitive inputs and island-owned IDs.
-                        Binding::Attribute { .. } | Binding::Value { .. }
-                        | Binding::Input { kind: InputKind::Value, .. } | Binding::Field { .. }
-                        // Text, classes and structural anchors are emitted separately.
-                        | Binding::Text { .. } | Binding::Class { .. } | Binding::Branch { .. }
-                        | Binding::Children { .. } | Binding::Invocation { .. }
-                        // Events intentionally have no server effect; these browser-only
-                        // operations are rejected by template validation where applicable.
-                        | Binding::Event { .. } | Binding::Property { .. } | Binding::Region { .. }
-                        | Binding::Router { .. } | Binding::Slot { .. } => quote! {},
-                    };
-                    body.push(operation);
-                }
-                if bindings
-                    .iter()
-                    .any(|binding| matches!(binding, Binding::Class { .. }))
-                {
-                    let initial = tag
-                        .attributes
-                        .get(b"class".as_slice())
-                        .map(|value| String::from_utf8_lossy(value).into_owned())
-                        .unwrap_or_default();
-                    let classes = bindings.iter().filter_map(|binding| match binding { Binding::Class { name, value, .. } => Some(quote_spanned! {value.span()=> if #value { __rf_classes.push(' '); __rf_classes.push_str(#name); } }), _ => None });
-                    body.push(quote! { { let mut __rf_classes = ::std::string::String::from(#initial); #(#classes)* __rf_writer.attr("class", __rf_classes.trim()); } });
-                }
-                body.literal(">");
-                body.push(quote! { #(#content)* });
-                raw = matches!(name.as_str(), "script" | "style");
-                if !super::tags::void_element(&name) {
-                    depth += 1;
-                }
-            }
-            Token::EndTag(tag) => {
-                depth -= 1;
-                let name = String::from_utf8_lossy(&tag.name).into_owned();
-                if name == "template" && depth == 0 && component.kind == RootKind::Template {
-                    continue;
-                }
-                body.literal(&format!("</{name}>"));
-                raw = false;
-            }
-            Token::String(value) => {
-                // Browser template mounting selects the single element root.
-                // Formatting outside that root is not part of the component.
-                if component.kind == RootKind::Template && !component.fragment && depth <= 1 {
-                    continue;
-                }
-                let value = String::from_utf8_lossy(&value).into_owned();
-                let value = if raw {
-                    value
-                } else {
-                    let mut escaped = String::new();
-                    template::escape_into(&mut escaped, &value, false);
-                    escaped
-                };
-                body.literal(&value);
-            }
-            Token::Comment(comment) => {
-                if component.kind == RootKind::Template && !component.fragment && depth <= 1 {
-                    continue;
-                }
-                let value = String::from_utf8_lossy(&comment);
-                let literal = format!("<!--{value}-->");
-                body.literal(&literal);
-                if let Ok(Some(MountMarker::Start(id))) = MountMarker::parse(&value) {
-                    if let Some(Binding::Branch { value, cases, .. }) = component.bindings.iter().find(|binding| matches!(binding, Binding::Branch { point, .. } if *point == id)) {
-                        let arms = cases.iter().enumerate().map(|(index, case)| {
-                            let pattern = &case.pattern;
-                            let captures = case.names.iter().map(|name| quote! { let #name = ::fusor::memo(move || #name.clone()); });
-                            let child = component_body(&components[case.body], components, true);
-                            let marker = format!("<!--rf:branch:{index}-->");
-                            quote! { #pattern => { #(#captures)* __rf_writer.static_markup(#marker, None, false); #child?; } }
-                        });
-                        body.push(quote_spanned! {value.span()=> { let __rf_value = { #value }; #[deny(non_snake_case)] match __rf_value { #(#arms),* } } });
-                    }
-                    if component.bindings.iter().any(|binding| matches!(binding, Binding::Children { point, .. } if *point == id)) {
-                        body.push(quote! { if let Some(children) = __rf_children { let child = children(__rf_context)?; __rf_writer.child(&child); } });
-                    }
-                    if let Some(Binding::Invocation { ty, inputs, children, condition, .. }) = component.bindings.iter().find(|binding| matches!(binding, Binding::Invocation { point, .. } if *point == id)) {
-                        let condition = condition.as_ref().map(|v| quote! { #v }).unwrap_or_else(|| quote! { true });
-                        let child = construct_child(ty, inputs, *children, components, true);
-                        body.push(quote_spanned! {ty.span()=> if #condition {
-                            __rf_writer.child_into(|__rf_writer| #child)?;
-                        } });
-                    }
-                }
-                if let Ok(Some(TextMarker::Start(id))) = TextMarker::parse(&value) {
-                    if let Some(Binding::Text { value, .. }) = component.bindings.iter().find(
-                        |binding| matches!(binding, Binding::Text { slot, .. } if *slot == id),
-                    ) {
-                        body.push(quote_spanned! {value.span()=> __rf_writer.text(&(#value)); });
-                    }
-                }
-            }
+    for token in crate::html::tokens(&component.html) {
+        match token {
+            Token::StartTag(tag) => render.start_tag(&tag),
+            Token::EndTag(tag) => render.end_tag(&tag),
+            Token::String(value) => render.text(&value),
+            Token::Comment(comment) => render.comment(&comment),
             _ => {}
         }
     }
-    if component.fragment {
-        body.literal("<!--/rf:fragment-->");
+    if component.fragment() {
+        render.body.literal("<!--/fusor:fragment-->");
     }
-    let body = body.finish();
+    let body = render.body.finish();
     if into {
         quote! {{ #(#body)* ::std::result::Result::<(), ::std::string::String>::Ok(()) }}
     } else {
         quote! {{
-            let mut __rf_writer = ::fusor_server::Writer::new();
+            let mut __fusor_writer = ::fusor_server::Writer::new();
             #(#body)*
-            ::std::result::Result::<_, ::std::string::String>::Ok(__rf_writer.finish())
+            ::std::result::Result::<_, ::std::string::String>::Ok(__fusor_writer.finish())
         }}
     }
+}
+
+/// A row whose HTML is a single component tag renders that child directly.
+fn forwarding_child(
+    component: &Component,
+    components: &[Component],
+    into: bool,
+) -> Option<TokenStream> {
+    if !component.inline()
+        || !component.elements.is_empty()
+        || !component.texts.is_empty()
+        || !component.text_elements.is_empty()
+    {
+        return None;
+    }
+    let [
+        Binding::Invocation {
+            ty,
+            inputs,
+            children,
+            condition: None,
+            key: None,
+            ..
+        },
+    ] = component.bindings.as_slice()
+    else {
+        return None;
+    };
+    Some(construct_child(ty, inputs, *children, components, into))
+}
+
+/// Walks a component's compiled HTML and emits the Rust that writes it on the server.
+struct ServerRender<'a> {
+    component: &'a Component,
+    components: &'a [Component],
+    body: Emission,
+    depth: i32,
+    /// Inside script or style, whose text is written unescaped.
+    raw: bool,
+    /// The next start tag is the component's root.
+    first: bool,
+}
+
+impl ServerRender<'_> {
+    fn start_tag(&mut self, tag: &StartTag<usize>) {
+        let component = self.component;
+        let name = String::from_utf8_lossy(&tag.name).into_owned();
+        if name == "template" && self.depth == 0 && component.kind() == RootKind::Template {
+            self.depth += 1;
+            return;
+        }
+        let id = tag
+            .attributes
+            .get(template::ELEMENT_ATTRIBUTE.as_bytes())
+            .and_then(|id| String::from_utf8_lossy(id).parse::<ElementId>().ok());
+        let bindings: Vec<&Binding> = component
+            .bindings
+            .iter()
+            .filter(|binding| id.is_some_and(|id| binding.anchor() == Anchor::Element(id)))
+            .collect();
+        let island = bindings
+            .iter()
+            .copied()
+            .find(|binding| matches!(binding, Binding::Island { .. }));
+        if let Some(island) = island {
+            self.body.push(island_prelude(tag, &bindings, island));
+        }
+        let sensitive = name == "input"
+            && tag.attributes.get(b"type".as_slice()).is_some_and(|value| {
+                matches!(
+                    String::from_utf8_lossy(value).to_ascii_lowercase().as_str(),
+                    "password" | "file"
+                )
+            });
+        self.body.open(&name);
+        self.static_attributes(tag, &bindings, island.is_some(), sensitive);
+        let mut content = Vec::new();
+        if let Some(slot) = tag
+            .attributes
+            .get(template::TEXT_ELEMENT_ATTRIBUTE.as_bytes())
+            .and_then(|id| String::from_utf8_lossy(id).parse::<TextId>().ok())
+        {
+            content.extend(self.text_write(slot));
+        }
+        for binding in &bindings {
+            let operation =
+                self.operation(binding, &name, sensitive, island.is_some(), &mut content);
+            self.body.push(operation);
+        }
+        if bindings
+            .iter()
+            .any(|binding| matches!(binding, Binding::Class { .. }))
+        {
+            self.body.push(classes(tag, &bindings));
+        }
+        self.body.literal(">");
+        self.body.push(quote! { #(#content)* });
+        self.raw = matches!(name.as_str(), "script" | "style");
+        if !super::tags::void_element(&name) {
+            self.depth += 1;
+        }
+    }
+
+    /// Authored attributes, minus those a binding writes, plus the root's identity.
+    fn static_attributes(
+        &mut self,
+        tag: &StartTag<usize>,
+        bindings: &[&Binding],
+        island: bool,
+        sensitive: bool,
+    ) {
+        let component = self.component;
+        let mut static_attributes = String::new();
+        let mut editable = false;
+        for (key, value) in &tag.attributes {
+            let key = String::from_utf8_lossy(key).into_owned();
+            let value = String::from_utf8_lossy(value).into_owned();
+            if sensitive && key == "value"
+                || island && key == "id"
+                || key == "class"
+                    && bindings
+                        .iter()
+                        .any(|binding| matches!(binding, Binding::Class { .. }))
+            {
+                continue;
+            }
+            editable |= static_attribute(&mut static_attributes, &key, &value);
+        }
+        if self.first && component.kind() == RootKind::Template && !component.fragment() {
+            let id = component.id.to_string();
+            let version = template::VERSION.to_string();
+            static_attribute(&mut static_attributes, template::COMPONENT_ATTRIBUTE, &id);
+            static_attribute(
+                &mut static_attributes,
+                template::VERSION_ATTRIBUTE,
+                &version,
+            );
+        }
+        self.body.literal(&static_attributes);
+        self.body.editable |= editable;
+        self.first = false;
+    }
+
+    /// The statement a binding adds to its element's opening tag; content it writes
+    /// between the tags goes to `content`.
+    fn operation(
+        &self,
+        binding: &Binding,
+        element: &str,
+        sensitive: bool,
+        island: bool,
+        content: &mut Vec<TokenStream>,
+    ) -> TokenStream {
+        let components = self.components;
+        let span = binding.span();
+        match binding {
+            Binding::Attribute { name, value, .. } if !island || name != "id" => {
+                let value = super::emit::format_args(value);
+                quote_spanned! {span=> __fusor_writer.attr(#name, #value); }
+            }
+            Binding::Boolean { name, value, .. } => {
+                quote_spanned! {span=> __fusor_writer.boolean(#name, { #value }); }
+            }
+            Binding::Checked { value, .. } => {
+                quote_spanned! {span=> __fusor_writer.boolean("checked", { #value }); }
+            }
+            Binding::Value { value, .. } if !sensitive => {
+                let value = super::emit::format_args(value);
+                quote_spanned! {span=> __fusor_writer.attr("value", #value); }
+            }
+            Binding::Input {
+                kind: InputKind::Value,
+                value,
+                ..
+            } if !sensitive => {
+                quote_spanned! {span=> __fusor_writer.attr("value", (#value).get()); }
+            }
+            Binding::Input {
+                kind: InputKind::Checked,
+                value,
+                ..
+            } => {
+                quote_spanned! {span=> __fusor_writer.boolean("checked", (#value).get()); }
+            }
+            Binding::Field { value, .. } if !sensitive => {
+                if element == "textarea" {
+                    content.push(quote_spanned! {span=> __fusor_writer.text((#value).raw()); });
+                    quote! {}
+                } else {
+                    quote_spanned! {span=> __fusor_writer.attr("value", (#value).raw()); }
+                }
+            }
+            Binding::ForEach {
+                items,
+                key,
+                body: row,
+                ..
+            } => {
+                let row_constructor = if components[*row].item_only_row {
+                    quote! { ::fusor_components::ForEach::server_item_row }
+                } else {
+                    quote! { ::fusor_components::ForEach::server_row }
+                };
+                let row = component_body(&components[*row], components, true);
+                content.push(quote_spanned! {span=> {
+                    let __fusor_items = ::fusor_components::ForEach::entries({ #items });
+                    let mut __fusor_keys = ::std::collections::BTreeSet::new();
+                    for __fusor_entry in __fusor_items {
+                        let __fusor_key = ::fusor_components::ForEach::key(&__fusor_entry, #key);
+                        if !__fusor_keys.insert(__fusor_key.clone()) { return ::std::result::Result::Err("duplicate key in ForEach".into()); }
+                        __fusor_writer.keyed_child(&__fusor_key, |mut __fusor_writer| {
+                            let state = #row_constructor(state, __fusor_entry);
+                            let state = &state;
+                            #row
+                        })?;
+                    }
+                }});
+                quote! {}
+            }
+            Binding::Island { .. } => {
+                // The same lowering serves owned root Writers and
+                // borrowed nested Writers; the latter reborrow is
+                // intentional. Scope the lint to framework calls.
+                content.push(
+                    quote_spanned! {span=> #[allow(clippy::needless_borrow)] __fusor_island.contents(&mut __fusor_writer); },
+                );
+                quote! { #[allow(clippy::needless_borrow)] __fusor_island.attributes(&mut __fusor_writer); }
+            }
+            // Guarded values omit sensitive inputs and island-owned IDs.
+            Binding::Attribute { .. } | Binding::Value { .. }
+            | Binding::Input { kind: InputKind::Value, .. } | Binding::Field { .. }
+            // Text, classes and structural anchors are emitted separately.
+            | Binding::Text { .. } | Binding::Class { .. } | Binding::Branch { .. }
+            | Binding::Children { .. } | Binding::Invocation { .. }
+            // Events intentionally have no server effect; these browser-only
+            // operations are rejected by template validation where applicable.
+            | Binding::Event { .. } | Binding::Property { .. } | Binding::Region { .. }
+            | Binding::Router { .. } | Binding::Slot { .. } => quote! {},
+        }
+    }
+
+    fn text_write(&self, slot: TextId) -> Option<TokenStream> {
+        self.component
+            .bindings
+            .iter()
+            .find_map(|binding| match binding {
+                Binding::Text { slot: text, value } if *text == slot => {
+                    Some(quote_spanned! {value.span()=> __fusor_writer.text(&(#value)); })
+                }
+                _ => None,
+            })
+    }
+
+    fn end_tag(&mut self, tag: &EndTag<usize>) {
+        self.depth -= 1;
+        let name = String::from_utf8_lossy(&tag.name).into_owned();
+        if name == "template" && self.depth == 0 && self.component.kind() == RootKind::Template {
+            return;
+        }
+        self.body.literal(&format!("</{name}>"));
+        self.raw = false;
+    }
+
+    fn text(&mut self, value: &Spanned<HtmlString, usize>) {
+        let component = self.component;
+        // Browser template mounting selects the single element root.
+        // Formatting outside that root is not part of the component.
+        if component.kind() == RootKind::Template && !component.fragment() && self.depth <= 1 {
+            return;
+        }
+        let value = String::from_utf8_lossy(value).into_owned();
+        let value = if self.raw {
+            value
+        } else {
+            let mut escaped = String::new();
+            template::escape_into(&mut escaped, &value, false);
+            escaped
+        };
+        self.body.literal(&value);
+    }
+
+    fn comment(&mut self, comment: &Spanned<HtmlString, usize>) {
+        let component = self.component;
+        if component.kind() == RootKind::Template && !component.fragment() && self.depth <= 1 {
+            return;
+        }
+        let value = String::from_utf8_lossy(comment);
+        let literal = format!("<!--{value}-->");
+        self.body.literal(&literal);
+        if let Ok(Some(MountMarker::Start(id))) = MountMarker::parse(&value) {
+            self.mount_point(id);
+        }
+        if let Ok(Some(TextMarker::Start(id))) = TextMarker::parse(&value) {
+            if let Some(write) = self.text_write(id) {
+                self.body.push(write);
+            }
+        }
+    }
+
+    /// Render whatever the browser would mount at this point: a branch, the
+    /// caller's children or a child component.
+    fn mount_point(&mut self, id: MountId) {
+        let component = self.component;
+        let components = self.components;
+        if let Some(Binding::Branch { value, cases, .. }) = component
+            .bindings
+            .iter()
+            .find(|binding| matches!(binding, Binding::Branch { point, .. } if *point == id))
+        {
+            let arms = cases.iter().enumerate().map(|(index, case)| {
+                let pattern = &case.pattern;
+                let captures = case
+                    .names
+                    .iter()
+                    .map(|name| quote! { let #name = ::fusor::memo(move || #name.clone()); });
+                let child = component_body(&components[case.body], components, true);
+                let marker = format!("<!--fusor:branch:{index}-->");
+                quote! { #pattern => { #(#captures)* __fusor_writer.static_markup(#marker, ::std::option::Option::None, false); #child?; } }
+            });
+            self.body.push(quote_spanned! {value.span()=> { let __fusor_value = { #value }; #[deny(non_snake_case)] match __fusor_value { #(#arms),* } } });
+        }
+        if component
+            .bindings
+            .iter()
+            .any(|binding| matches!(binding, Binding::Children { point, .. } if *point == id))
+        {
+            self.body.push(quote! { if let ::std::option::Option::Some(children) = __fusor_children { let child = children(__fusor_context)?; __fusor_writer.child(&child); } });
+        }
+        if let Some(Binding::Invocation {
+            ty,
+            inputs,
+            children,
+            condition,
+            ..
+        }) = component
+            .bindings
+            .iter()
+            .find(|binding| matches!(binding, Binding::Invocation { point, .. } if *point == id))
+        {
+            let condition = super::emit::or(condition.as_ref(), quote! { true });
+            let child = construct_child(ty, inputs, *children, components, true);
+            self.body.push(quote_spanned! {ty.span()=> if #condition {
+                __fusor_writer.child_into(|__fusor_writer| #child)?;
+            } });
+        }
+    }
+}
+
+/// Prepare an island before its host element: its ID, props and activation policy.
+fn island_prelude(tag: &StartTag<usize>, bindings: &[&Binding], island: &Binding) -> TokenStream {
+    let Binding::Island {
+        descriptor,
+        inputs,
+        activation,
+        prefetch,
+        ..
+    } = island
+    else {
+        unreachable!("island_prelude receives an island binding")
+    };
+    let span = descriptor.span();
+    let activation = super::emit::variant(span, activation);
+    let prefetch = super::emit::variant(span, prefetch);
+    let id = if let Some(Binding::Attribute { value, .. }) = bindings
+        .iter()
+        .find(|binding| matches!(binding, Binding::Attribute { name, .. } if name == "id"))
+    {
+        let value = super::emit::string(value);
+        quote! { ::std::option::Option::Some(#value) }
+    } else if let Some(value) = tag.attributes.get(b"id".as_slice()) {
+        let value = String::from_utf8_lossy(value).into_owned();
+        quote! { ::std::option::Option::Some(::std::string::String::from(#value)) }
+    } else {
+        quote! { ::std::option::Option::<::std::string::String>::None }
+    };
+    let props = island_props(descriptor, inputs);
+    quote_spanned! {span=>
+        let __fusor_island_id = #id;
+        let __fusor_island = __fusor_context.prepare_island::<#descriptor>(__fusor_island_id.as_deref(), &{ #props }, ::fusor_islands::Activation::#activation, ::fusor_islands::Prefetch::#prefetch)?;
+    }
+}
+
+/// The island's serialized props, built from the component tag's inputs.
+fn island_props(descriptor: &Rust, inputs: &[Input]) -> TokenStream {
+    let fields = super::emit::fields(inputs, |value| match value {
+        // String literals own their value across the serialized boundary.
+        InputValue::Literal(value) => {
+            quote_spanned! {value.span()=> ::core::convert::Into::into(#value) }
+        }
+        value => super::emit::braced(value),
+    });
+    quote_spanned! {descriptor.span()=> {
+        type __FusorIslandProps = <#descriptor as ::fusor_islands::Island>::Props;
+        __FusorIslandProps { #(#fields),* }
+    }}
+}
+
+/// Class bindings extend the static class attribute.
+fn classes(tag: &StartTag<usize>, bindings: &[&Binding]) -> TokenStream {
+    let initial = tag
+        .attributes
+        .get(b"class".as_slice())
+        .map(|value| String::from_utf8_lossy(value).into_owned())
+        .unwrap_or_default();
+    let classes = bindings.iter().filter_map(|binding| match binding {
+        Binding::Class { name, value, .. } => Some(
+            quote_spanned! {value.span()=> if #value { __fusor_classes.push(' '); __fusor_classes.push_str(#name); } },
+        ),
+        _ => None,
+    });
+    quote! { { let mut __fusor_classes = ::std::string::String::from(#initial); #(#classes)* __fusor_writer.attr("class", __fusor_classes.trim()); } }
 }
 
 pub(super) fn component(component: &Component, components: &[Component]) -> TokenStream {
@@ -482,33 +559,30 @@ pub(super) fn component(component: &Component, components: &[Component]) -> Toke
     let span = ty.span();
     let hash = hash(component, components);
     let body = component_body(component, components, true);
+    let allow = super::emit::allow_generated(span, quote! {});
+    // `render_into` binds its writer `mut`, which only some bodies need.
+    let allow_mut = super::emit::allow_generated(span, quote! { , unused_mut });
     quote_spanned! {span=>
         #[cfg(not(target_arch = "wasm32"))]
         impl ::fusor_server::Render for #ty {
             const TEMPLATE_HASH: &'static str = #hash;
-            #[allow(unused_variables, unused_braces, unused_parens, clippy::let_and_return, clippy::needless_borrows_for_generic_args, clippy::clone_on_copy)]
-            fn render(&self, __rf_context: &mut ::fusor_server::Context<'_>) -> ::fusor_server::Result<::fusor_server::Html> {
-                self.render_with_children(__rf_context, None)
+            #allow
+            fn render(&self, __fusor_context: &mut ::fusor_server::Context<'_>) -> ::fusor_server::Result<::fusor_server::Html> {
+                self.render_with_children(__fusor_context, ::std::option::Option::None)
             }
-            #[allow(unused_variables, unused_braces, unused_parens, clippy::let_and_return, clippy::needless_borrows_for_generic_args, clippy::clone_on_copy)]
-            fn render_with_children(&self, __rf_context: &mut ::fusor_server::Context<'_>, __rf_children: Option<&::fusor_server::Children<'_>>) -> ::fusor_server::Result<::fusor_server::Html> {
+            #allow
+            fn render_with_children(&self, __fusor_context: &mut ::fusor_server::Context<'_>, __fusor_children: ::std::option::Option<&::fusor_server::Children<'_>>) -> ::fusor_server::Result<::fusor_server::Html> {
                 let mut writer = ::fusor_server::Writer::new();
-                ::fusor_server::Render::render_into(self, __rf_context, __rf_children, &mut writer)?;
-                Ok(writer.finish())
+                ::fusor_server::Render::render_into(self, __fusor_context, __fusor_children, &mut writer)?;
+                ::std::result::Result::Ok(writer.finish())
             }
-            #[allow(unused_variables, unused_mut, unused_braces, unused_parens, clippy::let_and_return, clippy::needless_borrows_for_generic_args, clippy::clone_on_copy)]
-            fn render_into(&self, __rf_context: &mut ::fusor_server::Context<'_>, __rf_children: Option<&::fusor_server::Children<'_>>, mut __rf_writer: &mut ::fusor_server::Writer) -> ::fusor_server::Result<()> {
+            #allow_mut
+            fn render_into(&self, __fusor_context: &mut ::fusor_server::Context<'_>, __fusor_children: ::std::option::Option<&::fusor_server::Children<'_>>, mut __fusor_writer: &mut ::fusor_server::Writer) -> ::fusor_server::Result<()> {
                 let state = self;
                 #body
             }
         }
     }
-}
-
-fn title(value: &str) -> String {
-    let mut value = value.to_owned();
-    value[..1].make_ascii_uppercase();
-    value
 }
 
 fn static_attribute(output: &mut String, name: &str, value: &str) -> bool {

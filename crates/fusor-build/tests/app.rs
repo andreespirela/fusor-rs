@@ -67,10 +67,14 @@ fn external_registration_tracks_source_and_keeps_native_module_ownership() {
             .unwrap()
             .contains("pub mod app")
     );
-    for src in ["../src/missing.rs", "../Cargo.toml"] {
-        fs::write(&path, html.replace("../src/app.rs", src)).unwrap();
-        assert!(generate_app().is_err());
-    }
+    fs::write(&path, html.replace("../src/app.rs", "../src/missing.rs")).unwrap();
+    let missing = generate_app().unwrap_err().to_string();
+    assert!(
+        missing.contains("index.html:1:1: external Rust source "),
+        "{missing}"
+    );
+    fs::write(&path, html.replace("../src/app.rs", "../Cargo.toml")).unwrap();
+    assert!(generate_app().is_err());
     fs::create_dir(dir.path().join("dist")).unwrap();
     fs::write(dir.path().join("dist/generated.rs"), rust).unwrap();
     fs::write(&path, html.replace("../src/app.rs", "../dist/generated.rs")).unwrap();
@@ -96,8 +100,8 @@ fn source_graph_links_unique_templates_once_and_emits_normal_rust_modules() {
     let out = dir.path().join("out");
     let artifact = generate(&dir.path().join("Cargo.toml"), &out).unwrap();
     let html = fs::read_to_string(&artifact.html).unwrap();
-    assert_eq!(html.matches("data-rf-component=\"0\"").count(), 1);
-    assert_eq!(html.matches("data-rf-component=").count(), 2);
+    assert_eq!(html.matches("data-fusor-component=\"0\"").count(), 1);
+    assert_eq!(html.matches("data-fusor-component=").count(), 2);
     assert!(html.find("<!-- literal </body> -->").unwrap() < html.find("<template").unwrap());
     assert!(html.find("<template").unwrap() < html.rfind("</body>").unwrap());
     assert!(!html.contains("text/rust"));

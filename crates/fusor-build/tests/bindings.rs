@@ -21,14 +21,20 @@ fn typed_text_keeps_original_closure_contract_for_returns_macros_and_attributes(
         ))
         .unwrap();
         let rust = tokens(&page.rust);
-        assert!(rust.contains("bundle_text_string"), "{expression}: {rust}");
-        assert!(!rust.contains("bundle_text_value"), "{expression}: {rust}");
+        assert!(
+            rust.contains("bundle_text_node_string"),
+            "{expression}: {rust}"
+        );
+        assert!(
+            !rust.contains("bundle_text_node_value"),
+            "{expression}: {rust}"
+        );
     }
     let page = extract(&format!(
         "{STATE}<p rust:component=Counter>{{{{ state.value.get() }}}}</p>"
     ))
     .unwrap();
-    assert!(tokens(&page.rust).contains("bundle_text_value"));
+    assert!(tokens(&page.rust).contains("bundle_text_node_value"));
 }
 
 #[test]
@@ -82,8 +88,6 @@ fn managed_application_and_router_keep_constructors_as_native_rust() {
     assert!(rust.contains(&tokens(
         "::fusor_router::browser::declarative::mount_routes"
     )));
-    assert!(!page.html.contains("rust:app"));
-    assert!(!page.html.contains("rust:outlet"));
     assert!(page.locations.iter().any(|location| location.line == 2));
     assert!(page.locations.iter().any(|location| location.line == 3));
     for markup in [
@@ -91,30 +95,12 @@ fn managed_application_and_router_keep_constructors_as_native_rust() {
         r#"<App state="Counter"><main></main></App>"#,
         r#"<App state="{{ Counter }}"><main></main></App><App state="{{ Other }}"><aside></aside></App>"#,
         r#"<App state="{{ Counter }}"><main rust:component="Counter"></main></App>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render">fallback</div></main>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render"><p></p></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render" rust:slot="content"></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render" rust:attach="setup"></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:outlet="render" rust:if="true"></div></main>"#,
-        r#"<main rust:component="Counter"><input rust:outlet="render"></main>"#,
-        r#"<main rust:component="Counter"><select rust:outlet="render"></select></main>"#,
     ] {
         assert!(
             extract(&format!("{STATE}{markup}")).is_err(),
             "accepted {markup}"
         );
     }
-}
-
-#[test]
-fn removed_attachment_reports_the_native_javascript_migration() {
-    let source = format!(
-        r#"{STATE}
-<main rust:component="Counter"><div rust:attach="setup(element, owner)"></div></main>"#
-    );
-    let failure = extract(&source).expect_err("removed directive must not compile");
-    assert_eq!(failure.line, 2);
-    assert!(failure.to_string().contains("onMount and onCleanup"));
 }
 
 #[test]
@@ -127,7 +113,7 @@ fn slots_use_native_content_values_and_reject_conflicting_child_ownership() {
     );
     let page = extract(&source).unwrap();
     let rust = tokens(&page.rust);
-    assert!(rust.contains(&tokens("__rf_scope.slot_with")));
+    assert!(rust.contains(&tokens("__fusor_scope.slot_with")));
     assert!(rust.contains(&tokens("::fusor::dom::Content")));
     assert!(rust.contains(&tokens("ChildPolicy::Managed")));
     assert!(!page.html.contains("rust:slot"));
@@ -153,7 +139,7 @@ fn text_slots_preserve_mixed_markup_and_generate_native_rust() {
     );
     let page = extract(&source).unwrap();
     assert!(page.html.contains(
-        "<p>Count: <!--rf:0--><!--/rf:0--> <strong>items</strong> · <!--rf:1--><!--/rf:1--></p>"
+        "<p>Count: <!--fusor:0--><!--/fusor:0--> <strong>items</strong> · <!--fusor:1--><!--/fusor:1--></p>"
     ));
     assert!(tokens(&page.rust).contains(&tokens("state.count.get() * 2")));
     assert!(tokens(&page.rust).contains(&tokens("impl ::fusor::dom::Component for Counter")));
@@ -169,15 +155,15 @@ fn sole_child_text_reuses_bound_parents_without_allocating_unused_element_handle
     );
     let page = extract(&source).unwrap();
     let rust = tokens(&page.rust);
-    assert!(page.html.contains(r#"<span data-rf-text="0"></span>"#));
+    assert!(page.html.contains(r#"<span data-fusor-text="0"></span>"#));
     assert!(
         page.html
-            .contains(r#"<button data-rf-node="1" data-rf-text="1"></button>"#)
+            .contains(r#"<button data-fusor-node="1" data-fusor-text="1"></button>"#)
     );
-    assert!(page.html.contains(r#"<b data-rf-text="2"></b>"#));
-    assert!(page.html.contains(r#"<i data-rf-node="2"></i>"#));
-    assert!(!page.html.contains("<!--rf:"));
-    assert_eq!(page.html.matches("data-rf-node=").count(), 2);
+    assert!(page.html.contains(r#"<b data-fusor-text="2"></b>"#));
+    assert!(page.html.contains(r#"<i data-fusor-node="2"></i>"#));
+    assert!(!page.html.contains("<!--fusor:"));
+    assert_eq!(page.html.matches("data-fusor-node=").count(), 2);
     assert!(rust.contains(&tokens("texts: &[],")));
     assert!(rust.contains(&tokens(
         "text_elements: &[
@@ -192,8 +178,11 @@ fn sole_child_text_reuses_bound_parents_without_allocating_unused_element_handle
             }
         ]"
     )));
-    assert_eq!(rust.matches(&tokens("__rf_nodes.take_text")).count(), 3);
-    assert_eq!(rust.matches(&tokens("__rf_nodes.take_element")).count(), 2);
+    assert_eq!(rust.matches(&tokens("__fusor_nodes.take_text")).count(), 3);
+    assert_eq!(
+        rust.matches(&tokens("__fusor_nodes.take_element")).count(),
+        2
+    );
     assert_eq!(
         rust.matches(&tokens("template::ElementDescriptor")).count(),
         2
@@ -219,8 +208,11 @@ fn direct_text_requires_exact_native_element_contents() {
             "{STATE}<main rust:component=Counter><p>{contents}</p></main>"
         ))
         .unwrap();
-        assert!(!page.html.contains("data-rf-text="), "{contents}");
-        assert!(page.html.contains("<!--rf:0--><!--/rf:0-->"), "{contents}");
+        assert!(!page.html.contains("data-fusor-text="), "{contents}");
+        assert!(
+            page.html.contains("<!--fusor:0--><!--/fusor:0-->"),
+            "{contents}"
+        );
         assert!(tokens(&page.rust).contains(&tokens("text_elements: &[]")));
     }
     // Preformatted containers strip a leading line feed while parsing HTML;
@@ -239,8 +231,11 @@ fn direct_text_requires_exact_native_element_contents() {
             "{STATE}<main rust:component=Counter><{host}>{{{{ state.value }}}}</{closing}></main>"
         ))
         .unwrap();
-        assert!(!page.html.contains("data-rf-text="), "{host}");
-        assert!(page.html.contains("<!--rf:0--><!--/rf:0-->"), "{host}");
+        assert!(!page.html.contains("data-fusor-text="), "{host}");
+        assert!(
+            page.html.contains("<!--fusor:0--><!--/fusor:0-->"),
+            "{host}"
+        );
     }
 }
 
@@ -254,16 +249,16 @@ fn direct_text_covers_native_roots_and_inline_children_without_claiming_fragment
         "<main rust:component=Counter><ForEach items='{{ state.rows }}' key='{{ |item| item.id }}'><p>{{ item.get().title }}</p></ForEach></main>",
     ] {
         let page = extract(&format!("{STATE}{markup}")).unwrap();
-        assert_eq!(page.html.matches("data-rf-text=").count(), 1, "{markup}");
-        assert!(!page.html.contains("<!--rf:0-->"), "{markup}");
-        assert!(tokens(&page.rust).contains(&tokens("__rf_nodes.take_text")));
+        assert_eq!(page.html.matches("data-fusor-text=").count(), 1, "{markup}");
+        assert!(!page.html.contains("<!--fusor:0-->"), "{markup}");
+        assert!(tokens(&page.rust).contains(&tokens("__fusor_nodes.take_text")));
     }
     let page = extract(&format!(
         "{STATE}<main rust:component=Counter><Child>{{{{ state.value }}}}</Child></main>"
     ))
     .unwrap();
-    assert!(!page.html.contains("data-rf-text="));
-    assert!(page.html.contains("<!--rf:0--><!--/rf:0-->"));
+    assert!(!page.html.contains("data-fusor-text="));
+    assert!(page.html.contains("<!--fusor:0--><!--/fusor:0-->"));
 }
 
 #[test]
@@ -275,25 +270,25 @@ fn server_direct_text_uses_escaped_writer_content_and_preserves_anchored_sibling
         .unwrap();
         let rust = tokens(&page.rust);
         let direct = tokens(
-            r#"__rf_writer.static_markup("<main data-rf-component=\"0\" data-rf-version=\"2\"><p data-rf-text=\"0\">", ::std::option::Option::Some(5usize), false);
-                __rf_writer.text(&(state.value));"#,
+            r#"__fusor_writer.static_markup("<main data-fusor-component=\"0\" data-fusor-version=\"3\"><p data-fusor-text=\"0\">", ::std::option::Option::Some(5usize), false);
+                __fusor_writer.text(&(state.value));"#,
         );
         assert!(rust.contains(&direct), "{target}: {rust}");
         assert_eq!(
-            rust.matches(&tokens("__rf_writer.text(&(state.value))"))
+            rust.matches(&tokens("__fusor_writer.text(&(state.value))"))
                 .count(),
             1
         );
         assert!(rust.contains(&tokens(
-            r#"__rf_writer.static_markup("</p><p>prefix <!--rf:1-->", ::std::option::Option::Some(6usize), false);
-                __rf_writer.text(&(state.other));
-                __rf_writer.static_markup("<!--/rf:1--></p></main>", ::std::option::Option::None, false);"#
+            r#"__fusor_writer.static_markup("</p><p>prefix <!--fusor:1-->", ::std::option::Option::Some(6usize), false);
+                __fusor_writer.text(&(state.other));
+                __fusor_writer.static_markup("<!--/fusor:1--></p></main>", ::std::option::Option::None, false);"#
         )));
-        assert!(!page.html.contains("<!--rf:0-->"));
-        assert!(page.html.contains("<!--rf:1--><!--/rf:1-->"));
+        assert!(!page.html.contains("<!--fusor:0-->"));
+        assert!(page.html.contains("<!--fusor:1--><!--/fusor:1-->"));
         if target == "shared" {
             assert!(rust.contains(&tokens("texts: &[::fusor::template::TextId::new(1usize)]")));
-            assert_eq!(rust.matches(&tokens("__rf_nodes.take_text")).count(), 2);
+            assert_eq!(rust.matches(&tokens("__fusor_nodes.take_text")).count(), 2);
         }
     }
 }
@@ -308,7 +303,7 @@ fn handles_rust_blocks_strings_raw_strings_comments_and_html_entities() {
 + 2 }}}}</p>"###
     );
     let page = extract(&source).unwrap();
-    assert_eq!(page.html.matches("<!--rf:").count(), 3);
+    assert_eq!(page.html.matches("<!--fusor:").count(), 3);
     assert!(tokens(&page.rust).contains(&tokens("if 1 < 2")));
     assert!(page.rust.contains(r##"r#"}}"#"##));
     assert!(tokens(&page.rust).contains(&tokens("1 // }} is a comment, not the delimiter\n+ 2")));
@@ -330,7 +325,7 @@ fn compiles_attributes_properties_events_and_two_way_bindings() {
         "attr", "on", "input", "checkbox", "checked", "value", "class",
     ] {
         assert!(
-            tokens(&page.rust).contains(&tokens(&format!("__rf_scope.{method}"))),
+            tokens(&page.rust).contains(&tokens(&format!("__fusor_scope.{method}"))),
             "missing {method}"
         );
     }
@@ -350,9 +345,9 @@ fn foreach_inline_rows_use_native_typed_bindings() {
 </ForEach></ul>"#
     );
     let page = extract(&source).unwrap();
-    assert!(tokens(&page.rust).contains(&tokens("__rf_scope.keyed")));
+    assert!(tokens(&page.rust).contains(&tokens("__fusor_scope.keyed")));
     assert!(tokens(&page.rust).contains(&tokens("fusor_components::ForEach::entries")));
-    assert!(page.html.contains("<template data-rf-component="));
+    assert!(page.html.contains("<template data-fusor-component="));
     assert!(!page.html.contains("ForEach"));
     assert_eq!(
         tokens(&page.rust)
@@ -403,7 +398,7 @@ fn malformed_or_ambiguous_binding_markup_fails_at_the_html_source() {
         "<template rust:component=Counter on:click='state.reset()'><p>Hello</p></template>",
         r#"<ul rust:component=Counter><li>Loading</li><ForEach items="{{ state.items() }}" key="{{ |item| item.id }}"><li>{{ item.get().title }}</li></ForEach></ul>"#,
         "<textarea rust:component=Counter>{{ state.name.get() }}</textarea>",
-        "<p data-rf-node='0'></p>",
+        "<p data-fusor-node='0'></p>",
     ] {
         let source = format!("{STATE}\n{markup}");
         let error = extract(&source).expect_err(markup);
@@ -449,43 +444,45 @@ fn component_tags_replace_mount_constructors_in_every_render_target() {
         assert!(rust.contains(&tokens("FromInputs")));
         assert!(rust.contains(&tokens("value: { state.value.clone() }")));
         if !target.is_empty() {
-            assert!(rust.contains(&tokens("__rf_context.try_child_into_with_children")));
+            assert!(rust.contains(&tokens("__fusor_context.try_child_into_with_children")));
         }
     }
     let page = extract(&format!(r#"{STATE}<main rust:component="Counter"><section rust:async="state.view"><Child value="{{{{ state.value.clone() }}}}"></Child><section rust:await="state.data"><Child value="{{{{ ready.clone() }}}}"></Child></section></section></main>"#)).unwrap();
     let rust = tokens(&page.rust);
-    assert!(rust.contains(&tokens("__rf_frame.component_at")));
+    assert!(rust.contains(&tokens("__fusor_frame.component_at")));
     assert_eq!(
-        rust.matches(&tokens("__rf_nodes.take_mount_point")).count(),
+        rust.matches(&tokens("__fusor_nodes.take_mount_point"))
+            .count(),
         2
     );
 }
 
 #[test]
-fn removed_mount_syntax_reports_a_migration() {
-    for markup in [
-        "<div rust:component=Counter rust:mount='Child'></div>",
-        "<div rust:component=Counter><div rust:mount='Child'>Lost</div></div>",
+fn unknown_rust_directives_are_rejected_by_name() {
+    for (markup, name) in [
+        (
+            "<div rust:component=Counter rust:mount='Child'></div>",
+            "rust:mount",
+        ),
+        (
+            "<main rust:component=Counter><ul rust:each='state.items'></ul></main>",
+            "rust:each",
+        ),
     ] {
         let error = extract(&format!("{STATE}{markup}")).unwrap_err();
-        assert!(error.message.contains("rust:mount was removed"));
-        assert!(error.message.contains("component tag"));
+        assert_eq!(error.message, format!("unknown Rust directive {name:?}"));
     }
 }
 
 #[test]
 fn selective_and_coherent_contracts_reject_unsupported_authoring() {
     for markup in [
-        r#"<main rust:component="Counter" rust:render="server"><div rust:island="Cart" rust:props="props" rust:activate="hover"></div></main>"#,
-        r#"<main rust:component="Counter" rust:render="server"><div rust:island="Cart" rust:props="props" rust:prefetch="interaction"></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:island="Cart" rust:props="props"></div></main>"#,
         r#"<main rust:component="Counter" rust:render="server"><div rust:async="state.view"></div></main>"#,
         r#"<main rust:component="Counter" rust:render="shared"><input value="{{ state.value }}"></main>"#,
         r#"<main rust:component="Counter" rust:render="shared"><ul><li>Stale placeholder</li><ForEach items="{{ state.items }}" key="{{ |item| item.id }}"><li>{{ item.get().title }}</li></ForEach></ul></main>"#,
         r#"<main rust:component="Counter"><div rust:async="state.view"><input bind:value="state.value"></div></main>"#,
         r#"<main rust:component="Counter"><div rust:async="state.view"><div rust:async="state.other"></div></div></main>"#,
         r#"<main rust:component="Counter"><div rust:async="state.view"><x-widget></x-widget></div></main>"#,
-        r#"<main rust:component="Counter"><div rust:async="state.view"><div rust:attach="setup"></div></div></main>"#,
     ] {
         let error = extract(&format!("{STATE}\n{markup}")).expect_err(markup);
         assert_eq!(error.line, 2, "{markup}: {error}");
@@ -538,9 +535,15 @@ fn component_tags_lower_native_inputs_aliases_and_explicit_content() {
     assert!(rust.contains(&tokens("count: { state.count.clone() }")));
     assert!(rust.contains(&tokens("title: { \"literal & text\" }")));
     assert!(rust.contains(&tokens("::fusor::dom::Content::from_prepared")));
-    assert!(rust.contains(&tokens("let __rf_capture = ::std::rc::Rc::clone(state)")));
-    assert_eq!(page.html.matches("<template data-rf-component").count(), 2);
-    assert!(page.html.contains("<!--rf:mount:0--><!--/rf:mount:0-->"));
+    assert!(rust.contains(&tokens("let __fusor_capture = ::std::rc::Rc::clone(state)")));
+    assert_eq!(
+        page.html.matches("<template data-fusor-component").count(),
+        2
+    );
+    assert!(
+        page.html
+            .contains("<!--fusor:mount:0--><!--/fusor:mount:0-->")
+    );
     assert!(!page.html.contains("widgets::CounterAlias"));
     assert!(!page.html.contains("rust:content"));
     assert!(page.html.find("</main>").unwrap() < page.html.find("<template").unwrap());
@@ -588,7 +591,7 @@ fn component_tags_preserve_native_case_insensitive_html_and_table_parents() {
     assert!(page.html.contains("<MY-WIDGET>"));
     assert!(
         page.html
-            .contains("<tbody><!--rf:mount:0--><!--/rf:mount:0--></tbody>")
+            .contains("<tbody><!--fusor:mount:0--><!--/fusor:mount:0--></tbody>")
     );
     assert!(!page.html.contains("<Row"));
 }
@@ -653,25 +656,7 @@ fn foreach_refresh_ignores_static_row_text_but_tracks_rust() {
 }
 
 #[test]
-fn removed_list_directives_report_the_foreach_migration() {
-    // These are intentionally obsolete examples: keep the migration diagnostic
-    // useful, while all other list tests exercise the supported ForEach syntax.
-    for markup in [
-        r#"<ul rust:each="state.items.get()"></ul>"#,
-        r#"<ul rust:row="Row::new(item)"></ul>"#,
-        r#"<ul rust:each="state.items.get()" rust:key="item.id" rust:row="Row::new(item)"></ul>"#,
-    ] {
-        let source = format!("{STATE}\n<main rust:component=Counter>{markup}</main>");
-        let error = extract(&source).expect_err(markup);
-        assert_eq!(error.line, 2);
-        assert!(error.message.contains("were removed"), "{error}");
-        assert!(error.message.contains("<ForEach"), "{error}");
-        assert!(error.message.contains("inline HTML"), "{error}");
-    }
-}
-
-#[test]
-fn app_boundary_validates_structure_and_rejects_legacy_startup() {
+fn app_boundary_validates_structure() {
     for markup in [
         r#"<App state="{{ build() }}" />"#,
         r#"<App state="{{ build() }}"></App>"#,
@@ -687,14 +672,11 @@ fn app_boundary_validates_structure_and_rejects_legacy_startup() {
     ] {
         assert!(extract(markup).is_err(), "accepted {markup}");
     }
-    let error = extract(r#"<main rust:component="Root" rust:app="build()"></main>"#).unwrap_err();
-    assert!(error.message.contains("rust:app was removed"));
-    assert!(error.message.contains("<App state="));
     let html = r#"<App state="{{ factory(owner)? }}"><main><p>{{ state.title }}</p></main></App>"#;
     let page = extract(&format!("{STATE}{html}")).unwrap();
     assert!(!page.html.contains("<App"));
     assert!(!page.html.contains("</App>"));
-    assert!(page.html.contains("<main data-rf-component="));
+    assert!(page.html.contains("<main data-fusor-component="));
     assert!(!page.rust.contains("impl ::fusor::dom::Component for"));
     assert!(tokens(&page.rust).contains(&tokens("factory(owner)?")));
 }
@@ -707,7 +689,7 @@ fn children_lower_to_lazy_fragments_with_lexical_bindings_and_no_wrapper() {
     let rust = tokens(&page.rust);
     assert!(rust.contains(&tokens("::fusor::dom::Children::new")));
     assert!(rust.contains("prepare_fragment"));
-    assert!(rust.contains(&tokens("__RF_MOUNTS, parent")));
+    assert!(rust.contains(&tokens("__FUSOR_MOUNTS, parent")));
     assert!(!rust.contains("prepare_owner"));
     assert!(rust.contains("children_at"));
     assert!(!page.html.contains("<Children>"));
@@ -747,7 +729,7 @@ fn children_reject_duplicate_placement_attributes_fallbacks_and_app_forwarding()
 #[test]
 fn children_forward_once_and_empty_invocations_need_no_factory() {
     let page = extract(&format!("{STATE}<template rust:component=Counter><section><Panel><Children></Children></Panel></section></template>")).unwrap();
-    assert!(tokens(&page.rust).contains("__rf_forward"));
+    assert!(tokens(&page.rust).contains("__fusor_forward"));
     let empty = extract(&format!(
         "{STATE}<main rust:component=Counter><Panel></Panel></main>"
     ))
@@ -837,11 +819,11 @@ fn native_root_keeps_text_optimization_and_region_finalization_together() {
 <main rust:component="Counter" rust:async="state.boundary">{{{{ state.value }}}}</main>"#
     ))
     .unwrap();
-    assert!(page.html.contains("data-rf-text=\"0\""));
+    assert!(page.html.contains("data-fusor-text=\"0\""));
     assert!(!page.html.contains("rust:async"));
     let rust = tokens(&page.rust);
     assert!(rust.contains("async_region"));
-    assert!(rust.contains(&tokens("__rf_frame.text")));
+    assert!(rust.contains(&tokens("__fusor_frame.text")));
     assert!(page.locations.iter().any(|location| location.line == 2));
     syn::parse_file(&page.rust).unwrap();
 
@@ -855,29 +837,33 @@ fn native_root_keeps_text_optimization_and_region_finalization_together() {
     let rust = tokens(&page.rust);
     assert!(rust.contains(&tokens("AsyncRead::Ready(outer)")));
     assert!(rust.contains(&tokens("AsyncRead::Ready(inner)")));
-    assert_eq!(rust.matches(&tokens(".read(__rf_attempt)")).count(), 2);
+    assert_eq!(rust.matches(&tokens(".read(__fusor_attempt)")).count(), 2);
     syn::parse_file(&page.rust).unwrap();
 }
 
 #[test]
 fn async_root_and_spelling_errors_stay_on_the_authored_closing_tag() {
-    for (opening, body, closing) in [
-        ("<Async>", "", "</Async>"),
-        ("<Async>", "<section></section><aside></aside>", "</Async>"),
+    let root = "Async and Await require exactly one native HTML root";
+    for (opening, body, closing, message) in [
+        ("<Async>", "", "</Async>", root),
+        (
+            "<Async>",
+            "<section></section><aside></aside>",
+            "</Async>",
+            root,
+        ),
         (
             "<Await value=\"{{ state.read }}\" let=\"result\">",
             "<section></section>",
             "</await>",
+            "close Await with </Await>",
         ),
     ] {
         let source =
             format!("{STATE}\n<main rust:component=Counter>\n{opening}{body}\n{closing}\n</main>");
         let error = extract(&source).unwrap_err();
         assert_eq!((error.line, error.column), (4, 1), "{source}");
-        assert_eq!(
-            error.message,
-            "Async and Await require matching closing tags and exactly one native HTML root"
-        );
+        assert_eq!(error.message, message);
     }
 }
 
@@ -886,7 +872,7 @@ fn custom_properties_and_events_preserve_authored_case_and_ownership() {
     let page = extract(&format!(r#"{STATE}<main rust:component="Counter"><a-widget prop:someValue="state.value.get()" on:ValueChanged="state.changed(event)"></a-widget></main>"#)).unwrap();
     let code = tokens(&page.rust);
     assert!(
-        code.contains("property (& __rf_element_1 , \"someValue\""),
+        code.contains("property (& __fusor_element_1 , \"someValue\""),
         "{code}"
     );
     assert!(code.contains("\"ValueChanged\""));
@@ -1067,7 +1053,10 @@ fn hydration_tags_use_typed_props_and_existing_native_delivery() {
     assert!(rust.contains(&tokens("::fusor_islands::Activation::Visible")));
     assert!(rust.contains(&tokens("::fusor_islands::Prefetch::Idle")));
     assert!(rust.contains("prepare_island"));
-    assert!(page.html.contains("data-rf-activate-target=\"designer\""));
+    assert!(
+        page.html
+            .contains("data-fusor-activate-target=\"designer\"")
+    );
     assert!(page.html.contains("id=\"designer\""));
     assert!(!page.html.contains("<catalog::Cart"));
     assert!(!page.html.contains("hydrate="));
@@ -1099,10 +1088,7 @@ fn hydration_rejects_ambiguous_policies_placement_and_owned_contents() {
             "nonempty static",
         ),
         (r#"<Cart hydrate="load"/>"#, "explicit closing tag"),
-        (
-            r#"<Cart hydrate="load"></cart>"#,
-            "match their Rust spelling",
-        ),
+        (r#"<Cart hydrate="load"></cart>"#, "close Cart with </Cart>"),
         (r#"<Cart hydrate="load">lost</Cart>"#, "must be empty"),
         (
             r#"<Cart hydrate="load"><p>lost</p></Cart>"#,
@@ -1111,6 +1097,18 @@ fn hydration_rejects_ambiguous_policies_placement_and_owned_contents() {
         (
             r#"<Cart hydrate="load" rust:if="state.show"></Cart>"#,
             "cannot use rust:if",
+        ),
+        (
+            r#"<Cart hydrate="load" hydrate:prefech="idle"></Cart>"#,
+            "unknown attribute hydrate:prefech; component tags accept hydrate, hydrate:id, hydrate:prefetch",
+        ),
+        (
+            r#"<Cart hydrate:id="cart"></Cart>"#,
+            "hydrate:id requires hydrate on the same component tag",
+        ),
+        (
+            r#"<Cart hydrate="load" hydrate:target="cart"></Cart>"#,
+            "hydrate:target belongs on the native button that activates an island",
         ),
         (r#"<div hydrate="load"></div>"#, "Rust component tag"),
         (r#"<div hydrate:prefetch="idle"></div>"#, "hydrate belongs"),
@@ -1123,10 +1121,6 @@ fn hydration_rejects_ambiguous_policies_placement_and_owned_contents() {
             "type=button",
         ),
         (r#"<a hydrate:target="cart">Open</a>"#, "native type=button"),
-        (
-            r#"<div rust:island="Cart" rust:props="props"></div>"#,
-            "directives were removed",
-        ),
     ] {
         let source = format!(
             r#"{STATE}<main rust:component="Counter" rust:render="server">{markup}</main>"#
@@ -1159,14 +1153,14 @@ fn generated_native_and_template_roots_prepare_the_final_owner_before_the_factor
             .find("prepare_with_binding_bundle")
             .expect("prepared descriptor entry point");
         let factory = rust
-            .find(&tokens("prepare_state(__rf_scope.owner(), make)"))
+            .find(&tokens("prepare_state(__fusor_scope.owner(), make)"))
             .expect("factory receives prepared owner");
         assert!(
             prepare < factory,
             "descriptor must validate before the factory"
         );
         assert!(rust.contains(&tokens(
-            "__RF_TEMPLATE.prepare_with_binding_bundle({ Self::TEMPLATE_HTML }, parent)?"
+            "__FUSOR_TEMPLATE.prepare_with_binding_bundle({ Self::TEMPLATE_HTML }, parent)?"
         )));
         assert!(!rust.contains("prepare_owner"));
     }
@@ -1188,22 +1182,22 @@ fn binding_bundle_uses_dense_ordinals_and_defers_typed_extraction_to_fallback() 
         .unwrap();
     let rust = &rust[start..];
     assert!(rust.contains(&tokens(
-        "__rf_scope.bundle_attr(&__rf_bundle, 0u32, \"title\", move || ::std::option::Option::Some(::std::string::ToString::to_string(&(state.title))))? ;"
+        "__fusor_scope.bundle_attr(&__fusor_bundle, 0u32, \"title\", move || ::std::option::Option::Some(::std::string::ToString::to_string(&(state.title))))? ;"
     )), "{rust}");
     assert!(rust.contains(&tokens(
-        "__rf_scope.bundle_on(&__rf_bundle, 1u32, \"click\", move |event| { state.click() })? ;"
+        "__fusor_scope.bundle_on(&__fusor_bundle, 1u32, \"click\", move |event| { state.click() })? ;"
     )));
     assert!(rust.contains(&tokens(
-        "__rf_scope.bundle_text_value(&__rf_bundle, 3u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.direct))).__fusor_into_text() })? ;"
+        "__fusor_scope.bundle_text_node_value(&__fusor_bundle, 3u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.direct))).__fusor_into_text() })? ;"
     )));
     assert!(rust.contains(&tokens(
-        "__rf_scope.bundle_text_value(&__rf_bundle, 2u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.anchored))).__fusor_into_text() })? ;"
+        "__fusor_scope.bundle_text_node_value(&__fusor_bundle, 2u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.anchored))).__fusor_into_text() })? ;"
     )));
     let branch = rust.find("take_binding_bundle").unwrap();
-    assert!(branch < rust.find(&tokens("__rf_nodes.take_element")).unwrap());
-    assert!(branch < rust.find(&tokens("__rf_nodes.take_text")).unwrap());
+    assert!(branch < rust.find(&tokens("__fusor_nodes.take_element")).unwrap());
+    assert!(branch < rust.find(&tokens("__fusor_nodes.take_text")).unwrap());
     assert!(rust.contains("set_coherent_renderer"));
-    assert!(rust.contains(&tokens("__rf_scope.text_node_value")));
+    assert!(rust.contains(&tokens("__fusor_scope.text_node_value")));
     assert!(!rust.contains("ElementId :: new (0usize)"));
     assert!(!rust.contains("TextId :: new (0usize)"));
 }
@@ -1269,13 +1263,13 @@ fn binding_bundle_keeps_large_flat_children_eligible_under_managed_parents() {
     assert!(!parent.contains("prepare_with_binding_bundle"));
     assert!(parent.contains("prepare_with_points"));
     assert!(child.contains("prepare_with_binding_bundle"));
-    assert_eq!(child.matches("bundle_text_value").count(), 512);
+    assert_eq!(child.matches("bundle_text_node_value").count(), 512);
     assert_eq!(child.matches("bundle_attr").count(), 256);
     assert!(child.contains(&tokens(
-        "__rf_scope.bundle_text_value(&__rf_bundle, 767u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.direct_255))).__fusor_into_text() })? ;"
+        "__fusor_scope.bundle_text_node_value(&__fusor_bundle, 767u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.direct_255))).__fusor_into_text() })? ;"
     )), "{child}");
     assert!(child.contains(&tokens(
-        "__rf_scope.bundle_text_value(&__rf_bundle, 511u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.anchored_255))).__fusor_into_text() })? ;"
+        "__fusor_scope.bundle_text_node_value(&__fusor_bundle, 511u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.anchored_255))).__fusor_into_text() })? ;"
     )));
 }
 
@@ -1297,8 +1291,8 @@ fn foreach_forwarding_rows_omit_only_proven_unused_index_projections() {
             assert!(rust.contains(&tokens("::fusor_components::ForEach::server_item_row")));
             assert!(!rust.contains(&tokens("::fusor_components::ForEach::server_row")));
         }
-        assert!(rust.contains(&tokens("let item = &__rf_context_0.item;")));
-        assert!(!rust.contains(&tokens("let index = &__rf_context_0.index;")));
+        assert!(rust.contains(&tokens("let item = &__fusor_context_0.item;")));
+        assert!(!rust.contains(&tokens("let index = &__fusor_context_0.index;")));
     }
 }
 
@@ -1316,8 +1310,8 @@ fn foreach_index_proof_falls_back_for_raw_names_macros_attributes_and_context_es
             "index",
             "{ #[allow(unused)] let copy = item.clone(); copy }",
         ),
-        ("index", "identity(__rf_context_0)"),
-        ("index", "identity(r#__rf_context_0)"),
+        ("index", "identity(__fusor_context_0)"),
+        ("index", "identity(r#__fusor_context_0)"),
         ("index", "!state.flag"),
         ("index", "state.café()"),
         ("index", "{ let index = 0; item.clone() }"),
@@ -1335,7 +1329,7 @@ fn foreach_index_proof_falls_back_for_raw_names_macros_attributes_and_context_es
             "{expression}"
         );
         assert!(
-            rust.contains(&tokens(&format!("let {index} = &__rf_context_0.index;"))),
+            rust.contains(&tokens(&format!("let {index} = &__fusor_context_0.index;"))),
             "{expression}"
         );
     }
@@ -1442,7 +1436,7 @@ fn structural_control_flow_lowers_native_patterns_and_owned_fragments() {
             assert!(rust.contains("branch_at"));
         }
         if !render.is_empty() {
-            assert!(rust.contains("rf:branch:0"));
+            assert!(rust.contains("fusor:branch:0"));
         }
     }
 }
@@ -1570,4 +1564,159 @@ fn exclusive_branches_can_each_place_children_but_not_duplicate_them() {
     );
     extract(&source).unwrap();
     assert!(extract(&source.replace("<main>", "<main><Children></Children>")).is_err());
+}
+
+/// Extract `markup` inside a component and return the error's column and message.
+/// `STATE` and the wrapper have no newlines, so the column is a byte position.
+fn built_in_error(markup: &str) -> (usize, String) {
+    let source = format!("{STATE}<main rust:component=Counter>{markup}</main>");
+    let error = extract(&source).expect_err(markup);
+    assert_eq!(error.line, 1, "{markup}: {error}");
+    let base = source.find(markup).unwrap();
+    (error.column - 1 - base, error.message)
+}
+
+#[test]
+fn built_in_tag_attributes_name_the_tag_and_point_at_the_value() {
+    let foreach = |attributes: &str| {
+        format!(
+            r#"<ul><ForEach items="{{{{ state.items }}}}" key="{{{{ |x| x.id }}}}"{attributes}><li></li></ForEach></ul>"#
+        )
+    };
+    let route = |attributes: &str| format!(r#"<Router><Route {attributes}>Page</Route></Router>"#);
+    let cases = [
+        (r#"<If></If>"#.to_owned(), "<If", r#"If requires condition="{{ Rust expression }}""#),
+        (r#"<If condition="true"></If>"#.into(), "true", "If condition requires exactly one {{ Rust expression }}"),
+        (r#"<If condition="{{ true }}" class="x"></If>"#.into(), "<If", "If accepts only condition"),
+        (r#"<If condition="{{ true }}" />"#.into(), "<If", "If, Else, Match and Case require exact spelling and explicit closing tags"),
+        (r#"<If condition="{{ true }}"><Else hidden></Else></If>"#.into(), "<Else", "Else accepts no attributes"),
+        (r#"<Match value="{{ 1 }}"><Case></Case></Match>"#.into(), "<Case", r#"Case requires pattern="Rust pattern""#),
+        (foreach(r#" item="state""#), "state\"", "ForEach item cannot shadow framework scope names"),
+        (foreach(r#" index="Position""#), "Position", "ForEach index must be a snake_case Rust identifier"),
+        (foreach(r#" item="x" index="x""#), "<ForEach", "ForEach item and index names must differ"),
+        (foreach(r#" rows="{{ 1 }}""#), "<ForEach", "ForEach accepts items, key, and optional item and index names"),
+        (r#"<ul><foreach items="{{ 1 }}" key="{{ 1 }}"><li></li></foreach></ul>"#.into(), "<foreach", "the built-in component is spelled ForEach"),
+        (r#"<Async><section><Await value="{{ state.read }}"><p></p></Await></section></Async>"#.into(), "<Await", r#"Await requires let="name" to name its resolved value"#),
+        (r#"<Async><section><Await value="{{ state.read }}" let="ready"><p></p></Await></section></Async>"#.into(), "ready\"", "Await let cannot shadow framework scope names"),
+        (r#"<Async><section><Await let="value"><p></p></Await></section></Async>"#.into(), "<Await", r#"Await requires value="{{ Rust expression }}""#),
+        (r#"<Async boundary="state.view"><section></section></Async>"#.into(), "state.view", "Async boundary requires exactly one {{ Rust expression }}"),
+        (route(r#"path="/" let="state""#), "state\"", "Route let cannot shadow framework scope names"),
+        (route(r#"fallback path="/""#), "<Route ", "write <Route fallback> without path or let"),
+        (route(r#"to="/""#), "<Route ", "Route accepts path and optional let, or fallback"),
+    ];
+    for (markup, at, message) in cases {
+        let (column, actual) = built_in_error(&markup);
+        assert_eq!(actual, message, "{markup}");
+        assert_eq!(column, markup.find(at).unwrap(), "{markup}: {actual}");
+    }
+}
+
+#[test]
+fn app_state_is_one_expression_on_a_closed_tag() {
+    for (markup, message) in [
+        (
+            r#"<App state="{{ Counter }}" />"#,
+            "App requires an explicit closing tag",
+        ),
+        (
+            r#"<App state="Counter"><main></main></App>"#,
+            "App state requires exactly one {{ Rust expression }}",
+        ),
+        (
+            r#"<App state="{{ Counter }}" class="x"><main></main></App>"#,
+            r#"App accepts only state="{{ Rust expression }}"; put HTML attributes on its native root"#,
+        ),
+    ] {
+        let error = extract(&format!("{STATE}{markup}")).expect_err(markup);
+        assert_eq!(error.message, message, "{markup}");
+    }
+}
+
+#[test]
+fn comments_around_named_content_are_not_ordinary_children() {
+    let content = r#"<template rust:content="body"><p>Body</p></template>"#;
+    for markup in [
+        format!("<Child><!-- the body -->{content}</Child>"),
+        format!("<Child>\n  <!-- first -->\n  {content}\n  <!-- after -->\n</Child>"),
+    ] {
+        let page = extract(&format!(
+            "{STATE}<main rust:component=Counter>{markup}</main>"
+        ))
+        .unwrap_or_else(|error| panic!("{markup}: {error}"));
+        assert!(page.html.contains("<!--fusor:mount:0-->"), "{markup}");
+    }
+    let mixed =
+        format!("{STATE}<main rust:component=Counter><Child><b>text</b>{content}</Child></main>");
+    let error = extract(&mixed).unwrap_err();
+    assert_eq!(
+        error.message,
+        "do not mix named content and ordinary children in one invocation"
+    );
+}
+
+/// Prelude names the generated code must spell by path, because an application
+/// module may shadow them (`enum Choice { Some, None }` with a glob import).
+fn unqualified_prelude_names(tokens: proc_macro2::TokenStream, found: &mut Vec<String>) {
+    let mut previous_colon = false;
+    for token in tokens {
+        match &token {
+            proc_macro2::TokenTree::Group(group) => {
+                unqualified_prelude_names(group.stream(), found)
+            }
+            proc_macro2::TokenTree::Ident(ident)
+                if !previous_colon
+                    && [
+                        "Some", "None", "Ok", "Err", "Option", "Result", "String", "Vec",
+                    ]
+                    .contains(&ident.to_string().as_str()) =>
+            {
+                found.push(ident.to_string());
+            }
+            _ => {}
+        }
+        previous_colon = matches!(&token, proc_macro2::TokenTree::Punct(p) if p.as_char() == ':');
+    }
+}
+
+#[test]
+fn generated_code_names_prelude_items_by_path() {
+    for markup in [
+        // Server rendering: children, a branch and a keyed child.
+        r#"<main rust:component="Counter" rust:render="server"><Panel><p>{{ state.count }}</p></Panel><If condition="{{ state.open }}"><p>open</p><Else><p>closed</p></Else></If></main>"#,
+        // Coherent browser rendering: a keyed child inside an Async boundary.
+        r#"<main rust:component="Counter"><Async><section><Await value="{{ state.read }}" let="result"><div><Child value="{{ result.clone() }}" rust:key="state.key.get()"></Child></div></Await></section></Async></main>"#,
+        // Shared rendering emits both lowerings.
+        r#"<main rust:component="Counter" rust:render="shared"><Panel><b>{{ state.count }}</b></Panel></main>"#,
+    ] {
+        let page = extract(&format!("{STATE}{markup}"))
+            .unwrap_or_else(|error| panic!("{markup}: {error}"));
+        let mut found = Vec::new();
+        unqualified_prelude_names(page.rust.parse().unwrap(), &mut found);
+        assert!(found.is_empty(), "{markup}: {found:?}");
+    }
+}
+
+#[test]
+fn hydrated_components_in_rows_keep_their_type_outside_lexical_aliases() {
+    let page = extract(&format!(
+        r#"{STATE}<main rust:component="Counter" rust:render="server"><ul><ForEach items="{{{{ state.items }}}}" key="{{{{ |item| item.id }}}}"><li><Cart hydrate="load" product_id="{{{{ item.get().id }}}}" title="Row"></Cart></li></ForEach></ul></main>"#
+    ))
+    .unwrap();
+    let rust = tokens(&page.rust);
+    assert!(page.rust.contains("prepare_island :: < Cart > ("), "{rust}");
+    assert!(rust.contains(&tokens("<Cart as ::fusor_islands::Island> ::Props")));
+    assert!(rust.contains(&tokens(r#"title: ::core::convert::Into::into("Row")"#)));
+}
+
+#[test]
+fn template_hash_covers_named_content() {
+    let hash = |text: &str| {
+        let page = extract(&format!(
+            r#"{STATE}<main rust:component="Counter"><Child><template rust:content="body"><p>{text}</p></template></Child></main>"#
+        ))
+        .unwrap();
+        let start = page.rust.find("__FUSOR_TEMPLATE_HASH_0 : & str =").unwrap();
+        page.rust[start..start + 110].to_owned()
+    };
+    assert_ne!(hash("first"), hash("second"));
 }

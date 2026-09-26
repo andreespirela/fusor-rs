@@ -8,7 +8,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { chromium, firefox, webkit } from 'playwright';
 const exec = promisify(execFile), root = process.cwd();
-const scratch = await mkdtemp(join(tmpdir(), 'rf-bundle-bindings-'));
+const scratch = await mkdtemp(join(tmpdir(), 'fusor-bundle-bindings-'));
 const suffix = process.platform === 'win32' ? '.exe' : '';
 const env = { ...process.env, CARGO_TARGET_DIR: join(root, 'target/bundle-binding-tests') };
 const run = (program, args, cwd = scratch) => exec(program, args, { cwd, env, timeout: 240000, maxBuffer: 8e6 });
@@ -153,7 +153,7 @@ mod browser {
           check(fixture.getAttribute(`data-cache-${index}`) === changed, `static attribute name ${index} was lost or redirected`);
         }
       };
-      const componentId = new DOMParser().parseFromString(html, 'text/html').body.firstElementChild.getAttribute('data-rf-component');
+      const componentId = new DOMParser().parseFromString(html, 'text/html').body.firstElementChild.getAttribute('data-fusor-component');
       check(componentId !== null, 'server fixture lacks component identity');
       const reset = hydrate => { app.drop_scope(); host.replaceChildren(); globalThis.__fixtureFactory = () => {}; if (hydrate) host.innerHTML = html; };
       // Run before delivery::enable, using the ordinary mutable DOM template.
@@ -176,7 +176,7 @@ mod browser {
         app.mount_template(); mounts++;
         check(globalThis.__fixtureConstructed === mounts, 'certificate constructed a custom element');
         const fixture = host.firstElementChild;
-        check(fixture.getAttribute('data-rf-instance') === componentId, 'template instance marker');
+        check(fixture.getAttribute('data-fusor-instance') === componentId, 'template instance marker');
         app.change(changed); checkNames(fixture);
         check(fixture.querySelector('#later').textContent === changed, 'cached later target');
         fixture.querySelector('#action').click();
@@ -200,7 +200,7 @@ mod browser {
         // A late malformed slot must invalidate the certificate and reject before
         // even the first missing Text is inserted. Observe the private clone only
         // through the native clone API, not a framework test hook.
-        template.content.querySelector('#later').removeAttribute('data-rf-text');
+        template.content.querySelector('#later').removeAttribute('data-fusor-text');
         const nativeClone = Node.prototype.cloneNode; let clonedRoot;
         Node.prototype.cloneNode = function(...args) {
           const result = Reflect.apply(nativeClone, this, args);
@@ -223,7 +223,7 @@ mod browser {
         app.mount(hydrate);
         const first = host.querySelector('#first'), text = first.firstChild, button = host.querySelector('#action'), count = host.querySelector('#count');
         if (hydrate) check(host.firstElementChild === borrowed, 'hydration replaced root');
-        check(host.firstElementChild.getAttribute('data-rf-instance') === componentId, 'missing or wrong instance marker');
+        check(host.firstElementChild.getAttribute('data-fusor-instance') === componentId, 'missing or wrong instance marker');
         check(text.data === initial && first.title === initial, 'initial bindings');
         const integer = host.querySelector('#integer').firstChild;
         check(integer.data === '4294967295' && host.querySelector('#signed').textContent === '-2147483648', 'integer initial range');
@@ -271,7 +271,7 @@ mod browser {
       }
       reset(true);
       const empty = host.querySelector('#empty'), later = host.querySelector('#later');
-      later.removeAttribute('data-rf-text');
+      later.removeAttribute('data-fusor-text');
       let rejected = false;
       try { app.mount(true); } catch (error) { rejected = String(error).includes('template mismatch'); }
       check(rejected && empty.childNodes.length === 0, 'late descriptor failure filled early empty text host');

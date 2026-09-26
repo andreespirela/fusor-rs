@@ -406,7 +406,7 @@ impl<D: BrowserDriver> Browser<D> {
         let Some(anchor) = anchor else {
             return Ok(());
         };
-        if !anchor.has_attribute("data-fusor-link")
+        if !anchor.has_attribute(fusor::template::LINK_ATTRIBUTE)
             || anchor.has_attribute("download")
             || anchor
                 .rel()

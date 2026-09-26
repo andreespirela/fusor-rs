@@ -56,7 +56,7 @@ thread_local! {
         crate::template::COMPONENT_ATTRIBUTE,
         crate::template::VERSION_ATTRIBUTE,
         crate::template::ELEMENT_ATTRIBUTE,
-        "data-rf-key", "click", "input", "change", crate::template::INSTANCE_ATTRIBUTE,
+        "data-fusor-key", "click", "input", "change", crate::template::INSTANCE_ATTRIBUTE,
     ].map(JsValue::from_str);
 }
 

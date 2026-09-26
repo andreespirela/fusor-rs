@@ -69,8 +69,9 @@ pub(super) fn interpolations(
     Ok(result)
 }
 
-// Attribute values are already HTML-decoded; keep the feature's diagnostic and
-// authored offset while consuming the shared tokenizer's expression boundaries.
+// Attribute values are already HTML-decoded; keep the feature's diagnostic while
+// consuming the shared tokenizer's expression boundaries. `offset` is where the
+// value starts, so the expression is located at its `{{`.
 pub(super) fn exact_expression(
     source: &str,
     value: &str,
@@ -84,5 +85,6 @@ pub(super) fn exact_expression(
     {
         return Err(error(source, offset, message));
     }
-    Rust::new(source, parts.remove(0).tokens, offset)
+    let part = parts.remove(0);
+    Rust::new(source, part.tokens, offset + part.range.start)
 }

@@ -490,6 +490,7 @@ name = "fusor-build"
 version = "0.1.0"
 dependencies = [
  "fusor-core",
+ "fusor-islands",
  "fusor-router",
  "html5gum",
  "proc-macro2",

@@ -25,20 +25,20 @@ try {
       for (const damage of cases) {
         api.unmount(); host.innerHTML = html;
         const row = host.querySelector('li'), button = row.querySelector('button'), span = row.querySelector('span');
-        const id = span.getAttribute('data-rf-text');
+        const id = span.getAttribute('data-fusor-text');
         if (id === null || span.childNodes.length !== 1 || span.firstChild.nodeType !== Node.TEXT_NODE)
           throw Error('fixture did not compile to a sole text child');
-        if (damage === 'missing') button.removeAttribute('data-rf-node');
+        if (damage === 'missing') button.removeAttribute('data-fusor-node');
         if (damage === 'duplicate') button.after(button.cloneNode(true));
         if (damage === 'tag' || damage === 'namespace') {
           const replacement = damage === 'tag' ? document.createElement('a') : document.createElementNS('http://www.w3.org/2000/svg', 'button');
           for (const attr of button.attributes) replacement.setAttribute(attr.name, attr.value);
           button.replaceWith(replacement);
         }
-        if (damage === 'noncanonical-element') button.setAttribute('data-rf-node', `0${button.getAttribute('data-rf-node')}`);
-        if (damage === 'missing-text-marker') span.removeAttribute('data-rf-text');
-        if (damage === 'noncanonical-text') span.setAttribute('data-rf-text', `0${id}`);
-        if (damage === 'unknown-text') span.setAttribute('data-rf-text', '999999');
+        if (damage === 'noncanonical-element') button.setAttribute('data-fusor-node', `0${button.getAttribute('data-fusor-node')}`);
+        if (damage === 'missing-text-marker') span.removeAttribute('data-fusor-text');
+        if (damage === 'noncanonical-text') span.setAttribute('data-fusor-text', `0${id}`);
+        if (damage === 'unknown-text') span.setAttribute('data-fusor-text', '999999');
         if (damage === 'duplicate-text') span.after(span.cloneNode(true));
         if (damage === 'text-tag' || damage === 'text-namespace') {
           const replacement = damage === 'text-tag' ? document.createElement('output') : document.createElementNS('http://www.w3.org/2000/svg', 'span');
@@ -46,18 +46,18 @@ try {
           replacement.textContent = span.textContent; span.replaceWith(replacement);
         }
         if (damage === 'wrong-text-host') {
-          span.removeAttribute('data-rf-text'); button.setAttribute('data-rf-text', id);
+          span.removeAttribute('data-fusor-text'); button.setAttribute('data-fusor-text', id);
         }
         if (damage === 'extra-text-node') span.append(document.createTextNode('extra'));
         if (damage === 'element-slot') span.firstChild.replaceWith(document.createElement('b'));
         if (damage === 'comment-slot') span.append(document.createComment('ordinary comment'));
         if (damage === 'obsolete-text-anchors') {
-          span.before(document.createComment(`rf:${id}`));
-          span.after(document.createComment(`/rf:${id}`));
+          span.before(document.createComment(`fusor:${id}`));
+          span.after(document.createComment(`/fusor:${id}`));
         }
-        if (damage === 'mount-marker') row.append(document.createComment('rf:mount:999'));
-        if (damage === 'unknown-element') button.setAttribute('data-rf-node', '999999');
-        if (damage === 'old-schema') host.firstElementChild.setAttribute('data-rf-version', '1');
+        if (damage === 'mount-marker') row.append(document.createComment('fusor:mount:999'));
+        if (damage === 'unknown-element') button.setAttribute('data-fusor-node', '999999');
+        if (damage === 'old-schema') host.firstElementChild.setAttribute('data-fusor-version', '1');
         let rejected = false;
         try { api.hydrate(1000); } catch (error) { rejected = String(error).includes('template mismatch'); }
         if (!rejected) throw Error(`accepted malformed hydration: ${damage}`);
@@ -66,7 +66,7 @@ try {
       api.unmount(); host.innerHTML = html;
       const invalidRow = host.querySelector('li'), empty = invalidRow.querySelector('span');
       empty.replaceChildren();
-      invalidRow.querySelector('button').removeAttribute('data-rf-node');
+      invalidRow.querySelector('button').removeAttribute('data-fusor-node');
       let rejected = false;
       try { api.hydrate(1000); } catch (error) { rejected = String(error).includes('template mismatch'); }
       if (!rejected || empty.childNodes.length !== 0) throw Error('failed hydration mutated an empty text host');
@@ -83,7 +83,7 @@ try {
         firstText.data = 'server content awaiting commit';
         const lateSpan = borrowedRows[late].querySelector('span');
         lateSpan.replaceChildren();
-        borrowedRows[late].querySelector('button').removeAttribute('data-rf-node');
+        borrowedRows[late].querySelector('button').removeAttribute('data-fusor-node');
         let lateRejected = false;
         try { api.hydrate(1000); } catch (error) { lateRejected = String(error).includes('template mismatch'); }
         if (!lateRejected) throw Error(`accepted malformed late row ${late}`);

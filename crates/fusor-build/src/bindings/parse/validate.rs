@@ -1,4 +1,4 @@
-use crate::bindings::ir::{Binding, Component, InputValue, RenderTarget};
+use crate::bindings::ir::{Binding, Component, RenderTarget};
 use crate::{ExtractError, error};
 use std::collections::BTreeMap;
 
@@ -10,7 +10,7 @@ pub(super) fn components(
 ) -> Result<(), ExtractError> {
     if let Some(app) = components
         .iter()
-        .filter_map(|component| component.app.as_ref())
+        .filter_map(|component| component.app())
         .nth(1)
     {
         return Err(error(
@@ -35,7 +35,7 @@ pub(super) fn components(
             {
                 return Err(error(
                     source,
-                    binding.fragments()[0].offset,
+                    binding.origin().offset,
                     "shared templates require bind:value, bind:checked or bind:field for editable controls so activation can adopt native edits",
                 ));
             }
@@ -44,8 +44,8 @@ pub(super) fn components(
             {
                 return Err(error(
                     source,
-                    binding.fragments()[0].offset,
-                    "hydrate requires a server-rendered component",
+                    binding.origin().offset,
+                    super::HYDRATE_SERVER,
                 ));
             }
             if component.render != RenderTarget::Browser
@@ -59,51 +59,33 @@ pub(super) fn components(
             {
                 return Err(error(
                     source,
-                    binding.fragments()[0].offset,
-                    "server templates require resolved data and generated children; async regions, widgets, opaque content and outlets need an explicit browser preview",
+                    binding.origin().offset,
+                    "server templates need resolved data; move async regions, widgets, opaque content and outlets into a browser preview",
                 ));
             }
         }
     }
     fn count_children(bindings: &[Binding], components: &[Component]) -> usize {
-        bindings
-            .iter()
+        let count = |child: usize| count_children(&components[child].bindings, components);
+        Binding::walk(bindings)
+            .into_iter()
             .map(|binding| match binding {
                 Binding::Children { .. } => 1,
-                Binding::Branch { cases, .. } => cases
-                    .iter()
-                    .map(|case| count_children(&components[case.body].bindings, components))
+                // Cases and sibling routes are exclusive placements of the caller's children.
+                Binding::Branch { .. } | Binding::Router { .. } => binding
+                    .components()
+                    .into_iter()
+                    .map(count)
                     .max()
                     .unwrap_or(0),
-                // Sibling routes are exclusive placements of the caller's children.
-                Binding::Router { routes, .. } => routes
-                    .iter()
-                    .map(|route| count_children(&components[route.body].bindings, components))
-                    .max()
-                    .unwrap_or(0),
-                Binding::Region { bindings, .. } => count_children(bindings, components),
-                Binding::Invocation {
-                    children, inputs, ..
-                } => {
-                    children.map_or(0, |index| {
-                        count_children(&components[index].bindings, components)
-                    }) + inputs
-                        .iter()
-                        .map(|input| match input.value {
-                            InputValue::Content { component, .. } => {
-                                count_children(&components[component].bindings, components)
-                            }
-                            _ => 0,
-                        })
-                        .sum::<usize>()
-                }
+                Binding::Invocation { .. } => binding.components().into_iter().map(count).sum(),
                 _ => 0,
             })
             .sum()
     }
-    for component in components.iter().filter(|component| !component.fragment) {
+    for component in components.iter().filter(|component| !component.fragment()) {
         let placements = count_children(&component.bindings, components);
-        if component.app.is_some() && placements > 0 {
+        if component.app().is_some() && placements > 0 {
             return Err(error(
                 source,
                 component.ty.offset,

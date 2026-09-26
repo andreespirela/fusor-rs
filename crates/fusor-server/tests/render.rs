@@ -106,7 +106,7 @@ fn row_keys_are_inserted_at_the_structural_root_and_escaped() {
     writer.text("value");
     writer.close("li");
     let html = writer.finish().with_key(&"\"<&").unwrap();
-    assert!(html.as_str().starts_with("<li data-rf-key=\""));
+    assert!(html.as_str().starts_with("<li data-fusor-key=\""));
     assert!(html.as_str().ends_with(" class=\"row\">value</li>"));
     assert!(html.as_str().contains("&lt;&amp;"));
 }
@@ -202,6 +202,6 @@ fn streamed_custom_renderers_keep_children_owner_and_key_metadata() {
     writer.close("div");
     assert_eq!(
         writer.finish().as_str(),
-        "<div><b data-rf-key=\"7\">&lt;&amp;</b></div>"
+        "<div><b data-fusor-key=\"7\">&lt;&amp;</b></div>"
     );
 }

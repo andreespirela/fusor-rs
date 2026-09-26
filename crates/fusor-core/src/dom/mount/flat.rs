@@ -173,7 +173,7 @@ pub(super) fn resolve(
 
 impl Scope {
     #[doc(hidden)]
-    pub fn bundle_text_value(
+    pub fn bundle_text_node_value(
         &mut self,
         nodes: &Rc<JsValue>,
         index: u32,
@@ -188,7 +188,7 @@ impl Scope {
     }
 
     #[doc(hidden)]
-    pub fn bundle_text_string(
+    pub fn bundle_text_node_string(
         &mut self,
         nodes: &Rc<JsValue>,
         index: u32,

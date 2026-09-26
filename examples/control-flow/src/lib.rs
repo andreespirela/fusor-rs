@@ -102,7 +102,7 @@ mod tests {
         assert!(first.contains("Ada"));
         assert!(first.contains("Visible"));
         assert!(!first.contains("Sign in"));
-        assert!(first.contains("rf:branch:2"));
+        assert!(first.contains("fusor:branch:2"));
         state.session.set(Session::Authenticated {
             user: User {
                 name: "<unsafe>".into(),

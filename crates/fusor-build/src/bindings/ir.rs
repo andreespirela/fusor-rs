@@ -2,6 +2,8 @@
 
 use super::tokens::Rust;
 use fusor::template::{ChildPolicy, ComponentId, ElementId, MountId, RootKind, TextId};
+pub(super) use fusor_islands::{Activation, Prefetch};
+use proc_macro2::Span;
 use std::ops::Range;
 
 pub(crate) struct Edit {
@@ -18,18 +20,14 @@ pub(super) struct Plan {
 pub(super) struct Component {
     pub id: ComponentId,
     pub ty: Rust,
-    pub capture: Option<Rust>,
-    pub inline: bool,
-    pub fragment: bool,
+    pub shape: ComponentShape,
     pub empty: bool,
-    pub locals: Vec<(Rust, Rust)>,
+    pub row_locals: Vec<(Rust, Rust)>,
     // Proven before lexical aliases are inserted; only direct forwarding rows.
     pub item_only_row: bool,
     pub async_locals: Vec<Rust>,
     pub route_locals: Vec<Rust>,
     pub snapshot_locals: Vec<Rust>,
-    pub kind: RootKind,
-    pub app: Option<Rust>,
     pub elements: Vec<Element>,
     pub texts: Vec<TextId>,
     pub text_elements: Vec<TextElement>,
@@ -40,12 +38,17 @@ pub(super) struct Component {
     pub javascript: Option<crate::JavaScriptModule>,
 }
 
-// Construction choices only: lowering still consumes the existing Component IR.
+/// What kind of component this is, which decides how it mounts and what it captures.
 pub(super) enum ComponentShape {
+    /// A `rust:component` declaration, mounted from a template or an existing root.
     Declared(RootKind),
+    /// The `App` boundary, built by this state expression.
     App(Rust),
+    /// A ForEach row, rendered inline by its list.
     Row,
+    /// Children of a component tag, a Branch case or a Route body; captures its caller's state.
     Fragment(Rust),
+    /// A `rust:content` template passed to a component; captures its caller's state.
     Content(Rust),
 }
 
@@ -57,31 +60,16 @@ impl Component {
         render: RenderTarget,
         range: Range<usize>,
     ) -> Self {
-        let (capture, inline, fragment, kind, app) = match shape {
-            ComponentShape::Declared(kind) => (None, false, false, kind, None),
-            ComponentShape::App(state) => (None, false, false, RootKind::Existing, Some(state)),
-            ComponentShape::Row => (None, true, false, RootKind::Template, None),
-            ComponentShape::Fragment(capture) => {
-                (Some(capture), false, true, RootKind::Template, None)
-            }
-            ComponentShape::Content(capture) => {
-                (Some(capture), false, false, RootKind::Template, None)
-            }
-        };
         Self {
             id,
             ty,
-            capture,
-            inline,
-            fragment,
+            shape,
             empty: false,
-            locals: Vec::new(),
+            row_locals: Vec::new(),
             item_only_row: false,
             async_locals: Vec::new(),
             route_locals: Vec::new(),
             snapshot_locals: Vec::new(),
-            kind,
-            app,
             elements: Vec::new(),
             texts: Vec::new(),
             text_elements: Vec::new(),
@@ -90,6 +78,39 @@ impl Component {
             range,
             html: String::new(),
             javascript: None,
+        }
+    }
+
+    /// The state a fragment or content component borrows from its caller.
+    pub fn capture(&self) -> Option<&Rust> {
+        match &self.shape {
+            ComponentShape::Fragment(capture) | ComponentShape::Content(capture) => Some(capture),
+            ComponentShape::Declared(_) | ComponentShape::App(_) | ComponentShape::Row => None,
+        }
+    }
+
+    pub fn inline(&self) -> bool {
+        matches!(self.shape, ComponentShape::Row)
+    }
+
+    pub fn fragment(&self) -> bool {
+        matches!(self.shape, ComponentShape::Fragment(_))
+    }
+
+    pub fn kind(&self) -> RootKind {
+        match self.shape {
+            ComponentShape::Declared(kind) => kind,
+            ComponentShape::App(_) => RootKind::Existing,
+            ComponentShape::Row | ComponentShape::Fragment(_) | ComponentShape::Content(_) => {
+                RootKind::Template
+            }
+        }
+    }
+
+    pub fn app(&self) -> Option<&Rust> {
+        match &self.shape {
+            ComponentShape::App(state) => Some(state),
+            _ => None,
         }
     }
 }
@@ -131,8 +152,39 @@ pub(super) struct Input {
 }
 
 pub(super) enum InputValue {
+    /// `name="{{ expression }}"`.
     Expression(Rust),
+    /// `name="text"`: a string literal token.
+    Literal(Rust),
+    /// A `rust:content` template passed as this input.
     Content { component: usize, origin: Rust },
+}
+
+impl InputValue {
+    /// The Rust this input evaluates, unless it is projected content.
+    pub fn value(&self) -> Option<&Rust> {
+        match self {
+            Self::Expression(value) | Self::Literal(value) => Some(value),
+            Self::Content { .. } => None,
+        }
+    }
+}
+
+/// What a coherent region does with its value.
+pub(super) enum RegionKind {
+    /// `Async` or `rust:async`: the value is the region's async boundary.
+    Boundary,
+    /// `Await` or `rust:await`: the value is read; `Await` names the result.
+    Await { alias: Option<Rust> },
+}
+
+impl RegionKind {
+    pub fn alias(&self) -> Option<&Rust> {
+        match self {
+            Self::Boundary => None,
+            Self::Await { alias } => alias.as_ref(),
+        }
+    }
 }
 
 pub(super) struct RouteBranch {
@@ -181,15 +233,15 @@ pub(super) enum Binding {
     Island {
         node: ElementId,
         descriptor: Rust,
-        props: Rust,
-        activation: String,
-        prefetch: String,
+        /// The component's inputs, which become its serialized props.
+        inputs: Vec<Input>,
+        activation: Activation,
+        prefetch: Prefetch,
     },
     Region {
         node: ElementId,
         value: Rust,
-        await_value: bool,
-        alias: Option<Rust>,
+        kind: RegionKind,
         bindings: Vec<Binding>,
     },
     Text {
@@ -246,7 +298,115 @@ pub(super) enum Binding {
     },
 }
 
+/// Where a binding lives in its template.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Anchor {
+    Element(ElementId),
+    Mount(MountId),
+    Text(TextId),
+}
+
 impl Binding {
+    pub fn anchor(&self) -> Anchor {
+        match self {
+            Self::Text { slot, .. } => Anchor::Text(*slot),
+            Self::Branch { point, .. }
+            | Self::Router { point, .. }
+            | Self::Children { point, .. }
+            | Self::Invocation { point, .. } => Anchor::Mount(*point),
+            Self::ForEach { node, .. }
+            | Self::Island { node, .. }
+            | Self::Region { node, .. }
+            | Self::Attribute { node, .. }
+            | Self::Property { node, .. }
+            | Self::Boolean { node, .. }
+            | Self::Value { node, .. }
+            | Self::Checked { node, .. }
+            | Self::Class { node, .. }
+            | Self::Event { node, .. }
+            | Self::Input { node, .. }
+            | Self::Field { node, .. }
+            | Self::Slot { node, .. } => Anchor::Element(*node),
+        }
+    }
+
+    /// The fragment that locates this binding in the HTML; code generated for the
+    /// binding is spanned to it. It is always the first of `fragments()`.
+    pub fn origin(&self) -> &Rust {
+        match self {
+            Self::Branch { value, .. }
+            | Self::Region { value, .. }
+            | Self::Text { value, .. }
+            | Self::Property { value, .. }
+            | Self::Boolean { value, .. }
+            | Self::Checked { value, .. }
+            | Self::Class { value, .. }
+            | Self::Input { value, .. }
+            | Self::Field { value, .. } => value,
+            Self::Children { origin, .. } | Self::Router { origin, .. } => origin,
+            Self::ForEach { items, .. } => items,
+            Self::Invocation { ty, .. } => ty,
+            Self::Island { descriptor, .. } => descriptor,
+            Self::Event { handler, .. } => handler,
+            Self::Slot { content, .. } => content,
+            Self::Attribute { value, .. } | Self::Value { value, .. } => value
+                .0
+                .iter()
+                .find_map(|part| match part {
+                    StringPart::Expression(expression) => Some(expression),
+                    StringPart::Literal(_) => None,
+                })
+                .expect("an interpolated attribute has an expression"),
+        }
+    }
+
+    /// These bindings, each followed by the bindings inside it when it is a region.
+    pub fn walk(bindings: &[Binding]) -> Vec<&Binding> {
+        let mut all = Vec::new();
+        for binding in bindings {
+            all.push(binding);
+            if let Self::Region { bindings, .. } = binding {
+                all.extend(Self::walk(bindings));
+            }
+        }
+        all
+    }
+
+    /// Call `visit` on each binding, then on the bindings inside it when it is a region.
+    pub fn visit_mut(bindings: &mut [Binding], visit: &mut impl FnMut(&mut Binding)) {
+        for binding in bindings {
+            visit(binding);
+            if let Self::Region { bindings, .. } = binding {
+                Self::visit_mut(bindings, visit);
+            }
+        }
+    }
+
+    /// The components this binding renders: a tag's children and named content,
+    /// each case or route body, and a list's row.
+    pub fn components(&self) -> Vec<usize> {
+        match self {
+            Self::Invocation {
+                children, inputs, ..
+            } => children
+                .iter()
+                .copied()
+                .chain(inputs.iter().filter_map(|input| match input.value {
+                    InputValue::Content { component, .. } => Some(component),
+                    _ => None,
+                }))
+                .collect(),
+            Self::Branch { cases, .. } => cases.iter().map(|case| case.body).collect(),
+            Self::Router { routes, .. } => routes.iter().map(|route| route.body).collect(),
+            Self::ForEach { body, .. } => vec![*body],
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn span(&self) -> Span {
+        self.origin().span()
+    }
+
     pub fn fragments(&self) -> Vec<&Rust> {
         match self {
             Self::Branch { value, cases, .. } => std::iter::once(value)
@@ -260,27 +420,32 @@ impl Binding {
                 condition,
                 key,
                 ..
-            } => {
-                std::iter::once(ty)
-                    .chain(inputs.iter().flat_map(|input| {
-                        let (InputValue::Expression(value)
-                        | InputValue::Content { origin: value, .. }) = &input.value;
-                        [&input.name, value]
-                    }))
-                    .chain(condition)
-                    .chain(key)
-                    .collect()
-            }
+            } => std::iter::once(ty)
+                .chain(inputs.iter().flat_map(|input| {
+                    let (InputValue::Expression(value)
+                    | InputValue::Literal(value)
+                    | InputValue::Content { origin: value, .. }) = &input.value;
+                    [&input.name, value]
+                }))
+                .chain(condition)
+                .chain(key)
+                .collect(),
             Self::Island {
-                descriptor, props, ..
-            } => vec![descriptor, props],
+                descriptor, inputs, ..
+            } => std::iter::once(descriptor)
+                .chain(
+                    inputs
+                        .iter()
+                        .flat_map(|input| [&input.name].into_iter().chain(input.value.value())),
+                )
+                .collect(),
             Self::Region {
                 value,
-                alias,
+                kind,
                 bindings,
                 ..
             } => std::iter::once(value)
-                .chain(alias)
+                .chain(kind.alias())
                 .chain(bindings.iter().flat_map(Self::fragments))
                 .collect(),
             Self::Text { value, .. }

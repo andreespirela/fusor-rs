@@ -134,7 +134,7 @@ try {
       () => globalThis.__fusor_islands.prefetch("cart-one").promise,
     );
     assert.equal(
-      await page.getAttribute("#cart-one", "data-rf-status"),
+      await page.getAttribute("#cart-one", "data-fusor-status"),
       "dormant",
     );
     assert.equal(api.length, 0);
@@ -151,7 +151,7 @@ try {
     });
     await page.waitForTimeout(50);
     assert.equal(
-      await page.getAttribute("#cart-one", "data-rf-status"),
+      await page.getAttribute("#cart-one", "data-fusor-status"),
       "requested",
     );
     await page.evaluate(() => {
@@ -163,7 +163,7 @@ try {
       return globalThis.activating;
     });
     assert.equal(
-      await page.getAttribute("#cart-one", "data-rf-status"),
+      await page.getAttribute("#cart-one", "data-fusor-status"),
       "active",
     );
     assert(
@@ -242,7 +242,7 @@ try {
     await page.evaluate(() => controllerUnit.exercise_control(true));
     assert.equal(api.length, 0);
     assert.equal(
-      await page.getAttribute("#designer", "data-rf-status"),
+      await page.getAttribute("#designer", "data-fusor-status"),
       "dormant",
     );
     await page.evaluate(() => {
@@ -285,8 +285,8 @@ try {
       const host = document.querySelector("#cart-two");
       globalThis.oldToken = __fusor_islands.lookup(
         "cart-two",
-        host.dataset.rfIsland,
-        host.dataset.rfSchema,
+        host.dataset.fusorIsland,
+        host.dataset.fusorSchema,
       );
       document.querySelector("main").append(host);
     });
@@ -314,7 +314,7 @@ try {
     );
     await page.evaluate(() => document.querySelector("main").append(copy));
     await page.waitForFunction(
-      () => document.querySelector("#cart-two").dataset.rfStatus === "dormant",
+      () => document.querySelector("#cart-two").dataset.fusorStatus === "dormant",
     );
     await page.evaluate(
       () => __fusor_islands.activate("cart-two").promise,
@@ -324,12 +324,12 @@ try {
       await page.evaluate((policy) => {
         const host = document.querySelector("#cart-two").cloneNode(true);
         host.id = "policy-" + policy;
-        host.dataset.rfActivate = policy;
+        host.dataset.fusorActivate = policy;
         document.querySelector("main").prepend(host);
         if (policy === "visible") host.scrollIntoView();
       }, policy);
       await page.waitForFunction(
-        (id) => document.getElementById(id)?.dataset.rfStatus === "active",
+        (id) => document.getElementById(id)?.dataset.fusorStatus === "active",
         "policy-" + policy,
       );
     }
@@ -337,16 +337,16 @@ try {
     await page.evaluate(() => {
       const host = document.querySelector("#cart-two").cloneNode(true);
       host.id = "invalid-child";
-      host.dataset.rfActivate = "manual";
+      host.dataset.fusorActivate = "manual";
       host.querySelector("input[name=quantity]").value = "Edited while dormant";
-      host.querySelector("li").dataset.rfKey = "wrong";
+      host.querySelector("li").dataset.fusorKey = "wrong";
       globalThis.failedDraft = host.querySelector(".draft").textContent;
       globalThis.failedChild = host.querySelector(".nested-input");
       document.querySelector("main").append(host);
     });
     await page.waitForFunction(
       () =>
-        document.querySelector("#invalid-child").dataset.rfStatus === "dormant",
+        document.querySelector("#invalid-child").dataset.fusorStatus === "dormant",
     );
     assert.equal(
       await page.evaluate(async () => {

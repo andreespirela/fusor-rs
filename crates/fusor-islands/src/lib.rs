@@ -39,6 +39,14 @@ pub enum Activation {
     Manual,
 }
 impl Activation {
+    pub const ALL: [Self; 5] = [
+        Self::Load,
+        Self::Visible,
+        Self::Idle,
+        Self::Interaction,
+        Self::Manual,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Load => "load",
@@ -60,6 +68,8 @@ pub enum Prefetch {
     Idle,
 }
 impl Prefetch {
+    pub const ALL: [Self; 4] = [Self::None, Self::Load, Self::Visible, Self::Idle];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",

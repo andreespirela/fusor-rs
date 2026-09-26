@@ -52,7 +52,7 @@ try {
   assert(
     html.replace(/<!--[\s\S]*?-->/g, "").includes("Product 9007199254740993"),
   );
-  assert(html.includes('data-rf-unit="designer"'));
+  assert(html.includes('data-fusor-unit="designer"'));
   // Named inputs are checked by rustc at the native template boundary.
   const sourcePath = join(scratch, "site/web/index.html");
   const source = await readFile(sourcePath, "utf8");
@@ -71,9 +71,9 @@ try {
   await writeFile(sourcePath, source.replace(' hydrate:id="cart-one"', '').replace(' hydrate:id="cart-two"', ''));
   await run(cli, ["build", "-p", "catalog-site", "--offline", "--locked"]);
   const automatic = await readFile(join(scratch, "site/dist/index.html"), "utf8");
-  assert(automatic.includes('id="rf-island-1"'));
-  assert(automatic.includes('id="rf-island-2"'));
-  assert(automatic.includes('data-rf-activate-target="designer"'));
+  assert(automatic.includes('id="fusor-island-1"'));
+  assert(automatic.includes('id="fusor-island-2"'));
+  assert(automatic.includes('data-fusor-activate-target="designer"'));
   console.log(
     "PASS independent native/browser island consumer: public APIs, registration witness, props and production output",
   );

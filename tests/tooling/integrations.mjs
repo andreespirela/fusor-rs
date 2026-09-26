@@ -126,7 +126,7 @@ try {
       await page.locator("#toggle-first").click(); await page.locator("#toggle-first").click();
     }
     await page.evaluate(async () => {
-      const boot = document.querySelector("script[data-rf-revision]").src;
+      const boot = document.querySelector("script[data-fusor-revision]").src;
       const app = await import(new URL("./pkg/app.js", boot)); app.unmount(); FusorWidgets.lateCallback();
     });
     const disposed = await counts();
@@ -145,7 +145,7 @@ try {
     changedEntry = changedEntry.replace("*n += 1", "*n += 2");
     await edit("web/index.html", changedEntry);
     const nextGeneration = (await version()).split(":")[0];
-    await expect.poll(() => page.locator("script[data-rf-revision]").getAttribute("src")).toContain(nextGeneration);
+    await expect.poll(() => page.locator("script[data-fusor-revision]").getAttribute("src")).toContain(nextGeneration);
     await expect(page.locator(".cm-editor")).toHaveCount(2);
     assert.notEqual((await version()).split(":")[0], originalGeneration);
     await page.locator("#increment").click(); await expect(page.locator("#count")).toHaveText("2");

@@ -54,7 +54,7 @@ function sevenFramework() {
   return report;
 }
 async function fixture(t) {
-  const directory = await mkdtemp(resolve(tmpdir(), "rf-benchmark-tools-"));
+  const directory = await mkdtemp(resolve(tmpdir(), "fusor-benchmark-tools-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   return resolve(directory, "results");
 }

@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { chromium } from '@playwright/test';
 
 const exec = promisify(execFile), repository = process.cwd();
-const scratch = await realpath(await mkdtemp(join(tmpdir(), 'rf-native-modules-')));
+const scratch = await realpath(await mkdtemp(join(tmpdir(), 'fusor-native-modules-')));
 const tool = join(repository, 'crates/fusor-npm/src/tool.mjs');
 let server, browser;
 try {

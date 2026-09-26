@@ -1,7 +1,7 @@
 //! Structural list syntax and item-only forwarding-row analysis.
-use super::{ir::*, tokens::Rust};
+use super::{ir::*, tag_input::TagInput, tags::BuiltIn, tokens::Rust};
 use crate::{ExtractError, error};
-use html5gum::{DefaultEmitter, StartTag, Token, Tokenizer};
+use html5gum::{DefaultEmitter, Token, Tokenizer};
 use std::collections::BTreeSet;
 
 /// A ForEach owns its native parent's children, without adding a wrapper node.
@@ -22,8 +22,8 @@ pub(super) fn hosts(source: &str) -> Result<BTreeSet<usize>, ExtractError> {
         match token.expect("in-memory HTML") {
             Token::StartTag(tag) => {
                 let name = String::from_utf8_lossy(&tag.name).into_owned();
-                let list = super::tags::name(source, tag.span.start) == "ForEach";
-                if name == "foreach" && !list {
+                let list = super::tags::name(source, tag.span.start) == BuiltIn::ForEach.spelling();
+                if BuiltIn::classify(&name) == Some(BuiltIn::ForEach) && !list {
                     return Err(error(
                         source,
                         tag.span.start,
@@ -32,7 +32,8 @@ pub(super) fn hosts(source: &str) -> Result<BTreeSet<usize>, ExtractError> {
                 }
                 if list
                     && stack.iter().any(|frame| {
-                        matches!(frame.name.as_str(), "svg" | "math" | "select" | "option")
+                        super::tags::foreign_element(&frame.name)
+                            || matches!(frame.name.as_str(), "select" | "option")
                     })
                 {
                     return Err(error(
@@ -87,88 +88,36 @@ pub(super) fn hosts(source: &str) -> Result<BTreeSet<usize>, ExtractError> {
     Ok(hosts)
 }
 
-pub(super) fn inputs(
-    source: &str,
-    tag: &StartTag<usize>,
-) -> Result<(Rust, Rust, Rust, Rust), ExtractError> {
-    if tag.self_closing {
-        return Err(error(
-            source,
-            tag.span.start,
-            "ForEach requires inline HTML and an explicit closing tag",
-        ));
+pub(super) fn inputs(input: &TagInput) -> Result<(Rust, Rust, Rust, Rust), ExtractError> {
+    input.closed()?;
+    input.accepts(
+        &["items", "key", "item", "index"],
+        "items, key, and optional item and index names",
+    )?;
+    let item = input.binding_or("item", "item")?;
+    let index = input.binding_or("index", "index")?;
+    if item.same_tokens(&index) {
+        return Err(input.error("ForEach item and index names must differ"));
     }
-    for name in tag.attributes.keys() {
-        if !matches!(name.as_ref(), b"items" | b"key" | b"item" | b"index") {
-            return Err(error(
-                source,
-                tag.span.start,
-                "ForEach accepts items, key, and optional item/index binding names",
-            ));
-        }
-    }
-    let expression = |name: &[u8]| {
-        let value = tag.attributes.get(name).ok_or_else(|| {
-            error(
-                source,
-                tag.span.start,
-                "ForEach requires items and key expressions",
-            )
-        })?;
-        let value_text = String::from_utf8_lossy(value);
-        let parts =
-            super::interpolation::interpolations(source, &value_text, value.span.start, false)?;
-        super::interpolation::exact_expression(
-            source,
-            &value_text,
-            parts,
-            value.span.start,
-            "ForEach inputs require exactly one {{ Rust expression }}",
-        )
-    };
-    let name = |attr: &[u8], default: &str| {
-        let text = tag
-            .attributes
-            .get(attr)
-            .map(|v| String::from_utf8_lossy(v).into_owned())
-            .unwrap_or_else(|| default.into());
-        if super::tags::reserved_scope_name(&text) {
-            return Err(error(
-                source,
-                tag.span.start,
-                "ForEach bindings cannot shadow framework scope names",
-            ));
-        }
-        super::tags::field(source, &text, tag.span.start)
-    };
-    let item = name(b"item", "item")?;
-    let index = name(b"index", "index")?;
-    if item.tokens.to_string() == index.tokens.to_string() {
-        return Err(error(
-            source,
-            tag.span.start,
-            "ForEach item and index names must differ",
-        ));
-    }
-    Ok((expression(b"items")?, expression(b"key")?, item, index))
+    Ok((
+        input.expression("items")?,
+        input.expression("key")?,
+        item,
+        index,
+    ))
 }
 
 // This proof intentionally covers only the existing direct component-forwarding
 // row lowering. Descendant content and nested lexical rows retain the full Row.
 pub(super) fn mark_item_only_rows(components: &mut [Component]) {
-    fn bodies(bindings: &[Binding], rows: &mut Vec<usize>) {
-        for binding in bindings {
-            match binding {
-                Binding::ForEach { body, .. } => rows.push(*body),
-                Binding::Region { bindings, .. } => bodies(bindings, rows),
-                _ => {}
-            }
-        }
-    }
-    let mut rows = Vec::new();
-    for component in components.iter() {
-        bodies(&component.bindings, &mut rows);
-    }
+    let rows: Vec<usize> = components
+        .iter()
+        .flat_map(|component| Binding::walk(&component.bindings))
+        .filter_map(|binding| match binding {
+            Binding::ForEach { body, .. } => Some(*body),
+            _ => None,
+        })
+        .collect();
     for row in rows {
         let item_only = forwards_item_only(&components[row], components);
         components[row].item_only_row = item_only;
@@ -176,9 +125,9 @@ pub(super) fn mark_item_only_rows(components: &mut [Component]) {
 }
 
 fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
-    if !component.inline
-        || component.capture.is_some()
-        || component.locals.len() != 1
+    if !component.inline()
+        || component.capture().is_some()
+        || component.row_locals.len() != 1
         || !component.async_locals.is_empty()
         || !component.route_locals.is_empty()
         || !component.elements.is_empty()
@@ -209,11 +158,11 @@ fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
     }
     if inputs
         .iter()
-        .any(|input| !matches!(input.value, InputValue::Expression(_)))
+        .any(|input| matches!(input.value, InputValue::Content { .. }))
     {
         return false;
     }
-    let index = component.locals[0].1.tokens.to_string();
+    let index = component.row_locals[0].1.tokens.to_string();
     let index = index.strip_prefix("r#").unwrap_or(&index);
     fn independent(tokens: proc_macro2::TokenStream, index: &str) -> bool {
         tokens.into_iter().all(|token| match token {
@@ -223,7 +172,7 @@ fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
                 let name = name.strip_prefix("r#").unwrap_or(&name);
                 // Raw names compare like ordinary identifiers. Conservatively
                 // avoid Unicode normalization and compiler-context escapes.
-                name.is_ascii() && name != index && !name.starts_with("__rf")
+                name.is_ascii() && name != index && !name.starts_with("__fusor")
             }
             // Opaque macros/attributes may introduce a use absent from tokens.
             // Rejecting unary ! and != too is an intentional false positive.

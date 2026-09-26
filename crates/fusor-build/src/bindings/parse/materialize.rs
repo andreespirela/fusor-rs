@@ -1,6 +1,6 @@
 use crate::RustBlock;
 use crate::bindings::ir::{Component, Edit};
-use fusor::template;
+use crate::bindings::markup;
 use std::ops::Range;
 
 fn encloses(outer: &Range<usize>, inner: &Range<usize>) -> bool {
@@ -59,13 +59,8 @@ pub(super) fn components(
             );
         }
         component.empty = html.trim().is_empty();
-        component.html = if component.fragment {
-            format!(
-                "<template data-rf-component=\"{}\" data-rf-version=\"{}\">{}</template>",
-                component.id,
-                template::VERSION,
-                html
-            )
+        component.html = if component.fragment() {
+            format!("{}{html}</template>", markup::template_open(component.id))
         } else {
             html
         };

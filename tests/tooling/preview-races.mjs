@@ -64,7 +64,7 @@ export async function previewRaces(browser, origin) {
     for (const route of requests.slice(2))
       await route.fulfill({ status: 200, body: value(route) });
     await page.waitForFunction(
-      () => document.querySelector("#designer").dataset.rfStatus === "active",
+      () => document.querySelector("#designer").dataset.fusorStatus === "active",
     );
     assert.equal(await page.locator("#designer .selection").textContent(), "A");
     assert.equal(await page.locator("#designer .preview").count(), 0);
@@ -104,7 +104,7 @@ export async function previewRaces(browser, origin) {
       "price-A",
     );
     assert.equal(
-      await page.getAttribute("#designer", "data-rf-status"),
+      await page.getAttribute("#designer", "data-fusor-status"),
       "active",
     );
     await context.close();

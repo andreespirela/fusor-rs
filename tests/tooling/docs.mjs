@@ -15,7 +15,6 @@ const compilerSyntax = (await Promise.all([
   "crates/fusor-build/src/lib.rs",
 ].map(path => readFile(path, "utf8")))).join("\n");
 for (const directive of new Set(compilerSyntax.match(/rust:[a-z]+(?:-[a-z]+)*/g))) {
-  if (["rust:each", "rust:row", "rust:app", "rust:mount", "rust:outlet", "rust:attach", "rust:island", "rust:props", "rust:activate", "rust:prefetch", "rust:activate-target"].includes(directive)) continue; // Rejected legacy syntax, retained only in migration diagnostics.
   if (["rust:content", "rust:slot", "rust:async", "rust:await"].includes(directive)) continue; // Runtime compatibility APIs; authoring docs teach Children, Async, and Await.
   assert(referenceIndex.some(reference => reference.token === directive), `missing directive reference: ${directive}`);
 }

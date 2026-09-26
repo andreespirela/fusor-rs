@@ -1,4 +1,4 @@
-use super::Result;
+use super::{Result, SourceError};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -6,35 +6,72 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-/// `[package.metadata.fusor]` in the application's Cargo manifest.
+/// The entry document's source name. Source names are part of the artifact contract.
+const ENTRY_NAME: &str = "app";
+/// Discovered templates are named by this prefix and their package-relative path.
+const DISCOVERED_PREFIX: char = '@';
+
+/// One HTML file of the application.
+#[derive(Debug, Clone)]
+pub struct Source {
+    /// `app` for the entry, a registered component name, or `@` followed by a
+    /// discovered template's path. Names are part of the artifact contract.
+    pub name: String,
+    pub kind: SourceKind,
+    /// Relative to the package, as configured or discovered.
+    pub path: PathBuf,
+    pub canonical: PathBuf,
+}
+
+/// How a source joined the application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceKind {
+    Entry,
+    /// Registered under `[package.metadata.fusor.components]`.
+    Component,
+    /// Found under a template directory.
+    Discovered,
+}
+
+/// `[package.metadata.fusor]` in the application's Cargo manifest. Omitted
+/// fields take their value from [`AppConfig::default`].
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct AppConfig {
     pub delivery: Option<DeliveryConfig>,
-    #[serde(default = "entry")]
     pub entry: PathBuf,
     pub assets: Option<PathBuf>,
     /// Optional executable and arguments, run in the package before publishing
     /// assets. No shell expansion or implicit dependency installation.
-    #[serde(default)]
     pub assets_build: Vec<String>,
     /// Disable compatible refresh when custom build logic reads HTML/assets.
-    #[serde(default = "dev_refresh")]
     pub dev_refresh: bool,
-    #[serde(default = "output")]
     pub output: PathBuf,
-    #[serde(default = "base_path")]
     pub base_path: String,
     /// Application-relative prefixes allowed to receive index.html on an HTML
-    /// document request. Empty by default; static asset requests still return 404.
-    #[serde(default)]
+    /// document request. Static asset requests still return 404.
     pub history_fallback: Vec<String>,
-    #[serde(default)]
     pub components: BTreeMap<String, PathBuf>,
     /// Package-relative directories searched recursively for reusable HTML.
     /// An empty list disables discovery; explicit registrations remain supported.
-    #[serde(default = "templates")]
     pub templates: Vec<PathBuf>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            delivery: None,
+            entry: "web/index.html".into(),
+            assets: None,
+            assets_build: Vec::new(),
+            dev_refresh: true,
+            output: "dist".into(),
+            base_path: "/".into(),
+            history_fallback: Vec::new(),
+            components: BTreeMap::new(),
+            templates: vec!["web/components".into()],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -55,22 +92,6 @@ pub struct DeliveryUnit {
     pub package: String,
     #[serde(default)]
     pub features: Vec<String>,
-}
-
-fn entry() -> PathBuf {
-    "web/index.html".into()
-}
-fn templates() -> Vec<PathBuf> {
-    vec!["web/components".into()]
-}
-fn output() -> PathBuf {
-    "dist".into()
-}
-fn base_path() -> String {
-    "/".into()
-}
-fn dev_refresh() -> bool {
-    true
 }
 
 impl AppConfig {
@@ -179,7 +200,7 @@ impl AppConfig {
         for name in self.components.keys() {
             // Restrict module names to portable snake_case; rustc owns all types
             // and imports *inside* these modules.
-            if name == "app" || !valid_module_name(name) {
+            if name == ENTRY_NAME || !valid_module_name(name) {
                 return Err(format!("invalid component module {name:?}; use a non-keyword snake_case Rust identifier other than 'app'").into());
             }
         }
@@ -188,28 +209,31 @@ impl AppConfig {
 
     /// Discover a bounded source graph. Explicit registrations take precedence
     /// over discovery; an HTML file is compiled exactly once.
-    pub fn discover_sources(&self, root: &Path) -> Result<Vec<(String, PathBuf)>> {
+    pub fn discover_sources(&self, root: &Path) -> Result<Vec<Source>> {
         let root = root.canonicalize()?;
         let mut seen = BTreeSet::new();
         let mut sources = Vec::new();
-        for (name, path) in self.sources() {
-            let canonical = root
-                .join(path)
+        for (name, kind, path) in self.sources() {
+            let authored = root.join(path);
+            let canonical = authored
                 .canonicalize()
-                .map_err(|e| format!("{}: {e}", root.join(path).display()))?;
+                .map_err(|error| SourceError::new(&authored, error))?;
             if !canonical.starts_with(&root) || canonical.starts_with(root.join(&self.output)) {
-                return Err(format!(
-                    "HTML source must stay inside this package and outside its output: {}",
-                    path.display()
+                return Err(SourceError::new(
+                    path,
+                    "HTML source must stay inside this package and outside its output",
                 )
                 .into());
             }
-            if !seen.insert(canonical) {
-                return Err(
-                    format!("HTML source registered more than once: {}", path.display()).into(),
-                );
+            if !seen.insert(canonical.clone()) {
+                return Err(SourceError::new(path, "HTML source registered more than once").into());
             }
-            sources.push((name.to_owned(), path.to_owned()));
+            sources.push(Source {
+                name: name.to_owned(),
+                kind,
+                path: path.to_owned(),
+                canonical,
+            });
         }
         fn visit(directory: &Path, files: &mut BTreeSet<PathBuf>) -> Result<()> {
             for entry in fs::read_dir(directory)? {
@@ -217,9 +241,9 @@ impl AppConfig {
                 let kind = entry.file_type()?;
                 let path = entry.path();
                 if kind.is_symlink() {
-                    return Err(format!(
-                        "template discovery does not follow symlinks: {}",
-                        path.display()
+                    return Err(SourceError::new(
+                        &path,
+                        "template discovery does not follow symlinks",
                     )
                     .into());
                 }
@@ -242,9 +266,9 @@ impl AppConfig {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(error) => return Err(error.into()),
                 Ok(metadata) if !metadata.is_dir() || metadata.file_type().is_symlink() => {
-                    return Err(format!(
-                        "template discovery requires a real directory: {}",
-                        path.display()
+                    return Err(SourceError::new(
+                        &path,
+                        "template discovery requires a real directory",
                     )
                     .into());
                 }
@@ -253,9 +277,9 @@ impl AppConfig {
             // Check every ancestor, including a symlink above the discovery root.
             for ancestor in path.ancestors().take_while(|ancestor| *ancestor != root) {
                 if fs::symlink_metadata(ancestor)?.file_type().is_symlink() {
-                    return Err(format!(
-                        "template discovery does not follow symlinks: {}",
-                        ancestor.display()
+                    return Err(SourceError::new(
+                        ancestor,
+                        "template discovery does not follow symlinks",
                     )
                     .into());
                 }
@@ -263,23 +287,29 @@ impl AppConfig {
             visit(&path, &mut files)?;
         }
         for path in files {
-            if seen.insert(path.canonicalize()?) {
+            let canonical = path.canonicalize()?;
+            if seen.insert(canonical.clone()) {
                 let relative = path.strip_prefix(&root)?.to_owned();
-                sources.push((
-                    format!("@{}", relative.to_string_lossy().replace('\\', "/")),
-                    relative,
-                ));
+                sources.push(Source {
+                    name: format!(
+                        "{DISCOVERED_PREFIX}{}",
+                        relative.to_string_lossy().replace('\\', "/")
+                    ),
+                    kind: SourceKind::Discovered,
+                    path: relative,
+                    canonical,
+                });
             }
         }
         Ok(sources)
     }
 
     /// Entry first, then explicitly registered modules in deterministic order.
-    pub fn sources(&self) -> impl Iterator<Item = (&str, &Path)> {
-        std::iter::once(("app", self.entry.as_path())).chain(
+    pub fn sources(&self) -> impl Iterator<Item = (&str, SourceKind, &Path)> {
+        std::iter::once((ENTRY_NAME, SourceKind::Entry, self.entry.as_path())).chain(
             self.components
                 .iter()
-                .map(|(name, path)| (name.as_str(), path.as_path())),
+                .map(|(name, path)| (name.as_str(), SourceKind::Component, path.as_path())),
         )
     }
 }

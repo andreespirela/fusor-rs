@@ -20,6 +20,43 @@ pub(super) fn name(source: &str, offset: usize) -> &str {
         .unwrap_or("")
 }
 
+/// Declare the built-in tags once; each variant's name is its exact spelling.
+macro_rules! built_ins {
+    ($($tag:ident),* $(,)?) => {
+        /// A tag the compiler implements itself. HTML folds tag names to lowercase, so
+        /// a built-in is recognized by that name and must be written with its spelling.
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        pub(super) enum BuiltIn {
+            $($tag),*
+        }
+
+        impl BuiltIn {
+            const SPELLINGS: &[(Self, &'static str)] = &[$((Self::$tag, stringify!($tag))),*];
+        }
+    };
+}
+
+built_ins!(
+    App, If, Else, Match, Case, ForEach, Async, Await, Children, Router, Route
+);
+
+impl BuiltIn {
+    pub fn classify(name: &str) -> Option<Self> {
+        Self::SPELLINGS
+            .iter()
+            .find(|(_, spelling)| spelling.eq_ignore_ascii_case(name))
+            .map(|&(builtin, _)| builtin)
+    }
+
+    pub fn spelling(self) -> &'static str {
+        Self::SPELLINGS
+            .iter()
+            .find(|(builtin, _)| *builtin == self)
+            .map(|&(_, spelling)| spelling)
+            .expect("every built-in has a spelling")
+    }
+}
+
 pub(super) fn is_component(name: &str) -> bool {
     if name.contains("::") {
         return true;
@@ -172,12 +209,14 @@ pub(super) fn is_component(name: &str) -> bool {
     )
 }
 
-pub(super) fn field(source: &str, name: &str, offset: usize) -> Result<Rust, ExtractError> {
-    if !name
-        .bytes()
+pub(super) fn snake_case_ident(name: &str) -> bool {
+    name.bytes()
         .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-        || syn::parse_str::<syn::Ident>(name).is_err()
-    {
+        && syn::parse_str::<syn::Ident>(name).is_ok()
+}
+
+pub(super) fn field(source: &str, name: &str, offset: usize) -> Result<Rust, ExtractError> {
+    if !snake_case_ident(name) {
         return Err(error(
             source,
             offset,
@@ -191,6 +230,7 @@ pub(super) fn invocation(
     source: &str,
     tag: &StartTag<usize>,
     point: MountId,
+    hydrated: bool,
 ) -> Result<Binding, ExtractError> {
     let name = name(source, tag.span.start);
     let path = syn::parse_str::<syn::Path>(name).map_err(|_| {
@@ -230,28 +270,32 @@ pub(super) fn invocation(
                 "component input attributes must use their exact snake_case Rust spelling",
             ));
         }
+        let value_offset = crate::html::value_start(source, offset);
+        if name == "hydrate" || name.starts_with("hydrate:") {
+            if hydrated && super::hydration::ATTRIBUTES.contains(&name.as_ref()) {
+                continue;
+            }
+            return Err(error(source, offset, super::hydration::misplaced(&name)));
+        }
         match name.as_ref() {
-            "rust:if" => condition = Some(Rust::parse(source, &value_text, offset)?),
-            "rust:key" => key = Some(Rust::parse(source, &value_text, offset)?),
+            "rust:if" => condition = Some(Rust::parse(source, &value_text, value_offset)?),
+            "rust:key" => key = Some(Rust::parse(source, &value_text, value_offset)?),
             _ => {
                 let name = field(source, &name, offset)?;
-                let parts = interpolations(source, &value_text, offset, false)?;
+                let parts = interpolations(source, &value_text, value_offset, false)?;
                 let value = if parts.is_empty() {
                     let text = value_text.as_ref();
-                    Rust::parse(source, &quote! { #text }.to_string(), offset)?
+                    InputValue::Literal(Rust::synthetic(quote! { #text }, value_offset))
                 } else {
-                    exact_expression(
+                    literal_or_expression(exact_expression(
                         source,
                         &value_text,
                         parts,
-                        offset,
+                        value_offset,
                         "component inputs require a literal string or exactly one {{ Rust value }}; use format! explicitly for formatted strings",
-                    )?
+                    )?)
                 };
-                inputs.push(Input {
-                    name,
-                    value: InputValue::Expression(value),
-                });
+                inputs.push(Input { name, value });
             }
         }
     }
@@ -263,6 +307,15 @@ pub(super) fn invocation(
         condition,
         key,
     })
+}
+
+/// `{{ "text" }}` is written like an expression but is a string literal input.
+fn literal_or_expression(value: Rust) -> InputValue {
+    if syn::parse2::<syn::LitStr>(value.tokens.clone()).is_ok() {
+        InputValue::Literal(value)
+    } else {
+        InputValue::Expression(value)
+    }
 }
 
 pub(super) fn void_element(name: &str) -> bool {
@@ -285,6 +338,33 @@ pub(super) fn void_element(name: &str) -> bool {
     )
 }
 
+/// The parser reads these elements' contents as text, never as markup (the
+/// RAWTEXT, RCDATA and PLAINTEXT states), so bindings cannot live inside them.
+pub(super) fn text_only_element(name: &str) -> bool {
+    matches!(
+        name,
+        "script"
+            | "style"
+            | "textarea"
+            | "title"
+            | "xmp"
+            | "iframe"
+            | "noembed"
+            | "noframes"
+            | "plaintext"
+    )
+}
+
+/// SVG and MathML switch the parser into foreign content.
+pub(super) fn foreign_element(name: &str) -> bool {
+    matches!(name, "svg" | "math")
+}
+
+/// Table structure only accepts table content; the parser relocates anything else.
+pub(super) fn table_structure(name: &str) -> bool {
+    matches!(name, "table" | "tbody" | "thead" | "tfoot" | "tr")
+}
+
 pub(super) fn reserved_scope_name(name: &str) -> bool {
-    matches!(name, "state" | "owner" | "event" | "ready") || name.starts_with("__rf")
+    matches!(name, "state" | "owner" | "event" | "ready") || name.starts_with("__fusor")
 }

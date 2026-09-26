@@ -124,12 +124,12 @@ export async function islandRaces(browser, origin) {
       "load-failed",
     );
     assert.equal(
-      await page.getAttribute("#cart-one", "data-rf-status"),
+      await page.getAttribute("#cart-one", "data-fusor-status"),
       "failed",
     );
     await page.evaluate(() => __fusor_islands.retry("cart-one").promise);
     assert.equal(
-      await page.getAttribute("#cart-one", "data-rf-status"),
+      await page.getAttribute("#cart-one", "data-fusor-status"),
       "active",
     );
     assert.equal(attempts, 2);
@@ -169,7 +169,7 @@ export async function islandRaces(browser, origin) {
           !__fusor_islands
             .inspect()
             .instances.some((item) => item.id === "cart-one") &&
-          detached.dataset.rfStatus !== "active",
+          detached.dataset.fusorStatus !== "active",
       ),
     );
     await context.close();
@@ -188,13 +188,13 @@ export async function islandRaces(browser, origin) {
       for (const policy of ["visible", "idle"]) {
         const host = document.querySelector("#cart-one").cloneNode(true);
         host.id = "fallback-" + policy;
-        host.dataset.rfActivate = policy;
+        host.dataset.fusorActivate = policy;
         document.querySelector("main").append(host);
       }
     });
     for (const policy of ["visible", "idle"])
       await page.waitForFunction(
-        (id) => document.getElementById(id)?.dataset.rfStatus === "active",
+        (id) => document.getElementById(id)?.dataset.fusorStatus === "active",
         "fallback-" + policy,
       );
     await context.close();
@@ -219,7 +219,7 @@ export async function islandRaces(browser, origin) {
       "1",
     );
     assert.equal(
-      await page.getAttribute("#cart-one", "data-rf-status"),
+      await page.getAttribute("#cart-one", "data-fusor-status"),
       "failed",
     );
     await context.close();

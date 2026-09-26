@@ -7,6 +7,11 @@ use std::{
 
 pub const ARTIFACT_VERSION: u32 = 4;
 
+/// File names inside Cargo's `OUT_DIR`.
+pub(crate) const MANIFEST_FILE: &str = "fusor_artifacts.json";
+pub(crate) const HTML_FILE: &str = "fusor_app.html";
+pub(crate) const MODULE_FILE: &str = "fusor_module.rs";
+
 /// Paths are absolute. The CLI discovers this manifest from Cargo JSON messages,
 /// never by guessing profile directories or package library filenames.
 #[derive(Debug, Clone, Deserialize, Serialize)]

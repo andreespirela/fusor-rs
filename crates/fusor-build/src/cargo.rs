@@ -1,5 +1,9 @@
 //! Cargo I/O adapter. The compiler stages remain pure and usable without Cargo.
-use crate::{SourceMap, extract};
+use crate::{
+    SourceMap,
+    app::{MANIFEST_FILE, MODULE_FILE, SourceError},
+    extract,
+};
 use quote::quote;
 use std::{env, error::Error, fs, path::Path};
 
@@ -12,10 +16,10 @@ pub fn compile_app() -> Result<(), Box<dyn Error>> {
     println!("cargo::rerun-if-changed={}", manifest.display());
     let config = crate::app::AppConfig::load(&manifest)?;
     println!("cargo::rustc-env=FUSOR_BASE_PATH={}", config.base_path);
-    for (_, path) in config.discover_sources(Path::new(&root))? {
+    for source in config.discover_sources(Path::new(&root))? {
         println!(
             "cargo::rerun-if-changed={}",
-            Path::new(&root).join(path).display()
+            Path::new(&root).join(&source.path).display()
         );
     }
     // Cargo watches directory membership, including additions/removals. A
@@ -47,7 +51,7 @@ pub fn compile_app() -> Result<(), Box<dyn Error>> {
     );
     println!(
         "cargo::rustc-env=FUSOR_ARTIFACT_MANIFEST={}",
-        Path::new(&out).join("fusor_artifacts.json").display()
+        Path::new(&out).join(MANIFEST_FILE).display()
     );
     Ok(())
 }
@@ -60,7 +64,7 @@ pub fn compile(path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
     let source_path = Path::new(&manifest).join(path).canonicalize()?;
     println!("cargo::rerun-if-changed={}", source_path.display());
     let source = fs::read_to_string(&source_path)?;
-    let page = extract(&source).map_err(|error| format!("{}:{error}", source_path.display()))?;
+    let page = extract(&source).map_err(|error| SourceError::extracted(&source_path, error))?;
     if !page.javascript.is_empty() {
         return Err("component JavaScript requires compile_app() and cargo fusor build".into());
     }
@@ -71,9 +75,9 @@ pub fn compile(path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
     }
     println!("cargo::rustc-env=FUSOR_BASE_PATH=/");
     if page.blocks.is_empty() {
-        return Err(format!(
-            "{}: expected at least one <script type=\"text/rust\"> block",
-            source_path.display()
+        return Err(SourceError::new(
+            &source_path,
+            "expected at least one <script type=\"text/rust\"> block",
         )
         .into());
     }
@@ -81,7 +85,7 @@ pub fn compile(path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
     let out_dir = Path::new(&out_dir);
     let rust_path = out_dir.join("fusor_page.rs");
     let html_path = out_dir.join("fusor_page.html");
-    let module_path = out_dir.join("fusor_module.rs");
+    let module_path = out_dir.join(MODULE_FILE);
     let map_path = out_dir.join("fusor_bindings.map");
     fs::write(&rust_path, &page.rust)?;
     fs::write(&html_path, page.with_loader())?;

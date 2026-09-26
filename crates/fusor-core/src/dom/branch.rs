@@ -30,7 +30,7 @@ impl Scope {
                         .start
                         .next_sibling()
                         .ok_or_else(|| JsValue::from_str("missing server branch marker"))?;
-                    if marker.node_value().as_deref() != Some(&format!("rf:branch:{key}")) {
+                    if marker.node_value().as_deref() != Some(&format!("fusor:branch:{key}")) {
                         return Err(JsValue::from_str(
                             "server branch differs from browser branch",
                         ));
